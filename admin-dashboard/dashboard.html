@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClosetX Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="./css/custom.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#475569',
+                        secondary: '#F1F5F9',
+                        accent: '#475569',
+                        dark: '#0F172A',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="dashboard-layout flex">
+        <!-- Sidebar -->
+        <aside class="dashboard-sidebar w-64 bg-white min-h-screen border-r border-gray-200 flex flex-col">
+            <!-- Logo -->
+            <div class="px-6 py-5 border-b border-gray-200">
+                <div class="flex items-center gap-3">
+                    <div class="brand-mark">CX</div>
+                    <div>
+                        <h1 class="text-lg font-bold text-gray-900">ClosetX</h1>
+                        <p class="text-xs text-gray-500">Administration</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <nav class="flex-1 p-4 space-y-1">
+                <p class="nav-caption">WORKSPACE</p>
+                <button onclick="showSection('overview')" id="nav-overview" class="nav-item active w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Overview</span>
+                </button>
+                
+                <button onclick="showSection('applications')" id="nav-applications" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
+                    <i class="fas fa-id-card"></i>
+                    <span>Applications</span>
+                    <span id="applications-badge" class="nav-count">0</span>
+                </button>
+
+                <button onclick="showSection('pending')" id="nav-pending" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
+                    <i class="fas fa-images"></i>
+                    <span>Asset approvals</span>
+                    <span id="pending-badge" class="nav-count">0</span>
+                </button>
+                
+                <button onclick="showSection('designers')" id="nav-designers" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
+                    <i class="fas fa-users"></i>
+                    <span>Designers</span>
+                </button>
+
+                <button onclick="showSection('feedback')" id="nav-feedback" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
+                    <i class="fas fa-comment-dots"></i>
+                    <span>Feedback</span>
+                    <span id="feedback-badge" class="nav-count">0</span>
+                </button>
+            </nav>
+
+            <!-- Logout Button -->
+            <div class="sidebar-account border-t border-gray-200 p-4">
+                <div class="mb-3 flex items-center gap-3 px-2">
+                    <div id="admin-avatar" class="admin-avatar">AD</div>
+                    <div class="min-w-0">
+                        <p id="admin-name" class="truncate text-sm font-semibold text-gray-900">Administrator</p>
+                        <p class="text-xs text-gray-500">Workspace admin</p>
+                    </div>
+                </div>
+                <button onclick="logout()" class="w-full rounded-lg px-3 py-2 text-left text-sm text-gray-600 hover:bg-gray-100">
+                    <i class="fas fa-arrow-right-from-bracket mr-2"></i>Sign out
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="dashboard-main flex-1 overflow-y-auto bg-gray-50">
+            <div class="topbar">
+                <label class="global-search">
+                    <i class="fas fa-search"></i>
+                    <input id="global-search" type="search" placeholder="Search this view..." aria-label="Search current view">
+                    <kbd>/</kbd>
+                </label>
+                <div class="topbar-actions">
+                    <button id="notification-button" class="icon-button" type="button" aria-label="Open pending reviews">
+                        <i class="far fa-bell"></i><span id="notification-count" class="notification-count">0</span>
+                    </button>
+                    <div class="topbar-admin">
+                        <div id="topbar-avatar" class="admin-avatar">AD</div>
+                        <div>
+                            <p id="topbar-admin-name" class="text-sm font-semibold text-gray-900">Administrator</p>
+                            <p class="text-xs text-gray-500">Admin</p>
+                        </div>
+                    </div>
+                    <button onclick="logout()" class="topbar-signout" type="button">Sign out</button>
+                </div>
+            </div>
+            <!-- Header -->
+            <header class="page-heading mb-7 flex justify-between items-center">
+                <div>
+                    <h2 id="page-title" class="text-3xl font-bold text-gray-900 mb-1">Overview</h2>
+                    <p id="page-subtitle" class="text-gray-600">Dashboard analytics and insights</p>
+                </div>
+                <button onclick="refreshData()" class="refresh-button flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 border border-gray-200 rounded-lg transition-all font-semibold">
+                    <i class="fas fa-sync-alt"></i>
+                    <span>Refresh</span>
+                </button>
+            </header>
+
+            <!-- Overview Section -->
+            <div id="overview-section" class="section">
+                <!-- Stats Cards -->
+                <div id="stats-cards" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-7">
+                    <div class="stat-skeleton"><span></span><i></i></div>
+                    <div class="stat-skeleton"><span></span><i></i></div>
+                    <div class="stat-skeleton"><span></span><i></i></div>
+                    <div class="stat-skeleton"><span></span><i></i></div>
+                </div>
+
+                <!-- Charts Row -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <!-- Design Status Chart -->
+                    <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+                        <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                            <i class="fas fa-chart-pie text-blue-600"></i>
+                            Design Status
+                        </h3>
+                        <div class="h-64">
+                            <canvas id="statusChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Submissions Over Time -->
+                    <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+                        <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                            <i class="fas fa-chart-line text-blue-600"></i>
+                            Submissions (30 Days)
+                        </h3>
+                        <div class="h-64">
+                            <canvas id="timeChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                    <div class="mb-4 flex items-center justify-between">
+                        <div>
+                            <h3 class="text-base font-bold text-gray-900">Recent submissions</h3>
+                            <p class="mt-1 text-xs text-gray-500">Latest design requests from designers</p>
+                        </div>
+                        <button type="button" onclick="showSection('pending')" class="row-action">View all <i class="fas fa-arrow-right ml-1"></i></button>
+                    </div>
+                    <div id="recent-activity" class="data-table-wrap recent-activity-table">
+                        <!-- Recent activity will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Other Sections -->
+            <div id="pending-section" class="section hidden">
+                <div class="section-toolbar">
+                    <div class="filter-tabs" role="tablist" aria-label="Filter asset requests">
+                        <button type="button" class="filter-tab active" data-design-filter="pending">Pending <span id="pending-filter-count">0</span></button>
+                        <button type="button" class="filter-tab" data-design-filter="all">All assets</button>
+                        <button type="button" class="filter-tab" data-design-filter="approved">Approved</button>
+                        <button type="button" class="filter-tab" data-design-filter="rejected">Declined</button>
+                    </div>
+                    <span id="asset-results-count" class="text-sm text-gray-500"></span>
+                </div>
+                <div id="pending-designs" class="data-table-wrap"></div>
+            </div>
+
+            <div id="applications-section" class="section hidden">
+                <div class="section-toolbar">
+                    <div class="filter-tabs" role="tablist" aria-label="Filter designer applications">
+                        <button type="button" class="filter-tab active" data-application-filter="pending">Pending <span id="application-filter-count">0</span></button>
+                        <button type="button" class="filter-tab" data-application-filter="all">All applications</button>
+                        <button type="button" class="filter-tab" data-application-filter="approved">Accepted</button>
+                        <button type="button" class="filter-tab" data-application-filter="rejected">Declined</button>
+                    </div>
+                </div>
+                <div id="applications-list" class="data-table-wrap"></div>
+            </div>
+
+            <div id="designers-section" class="section hidden">
+                <div id="designers-grid" class="data-table-wrap"></div>
+            </div>
+
+            <div id="feedback-section" class="section hidden">
+                <div class="section-toolbar">
+                    <div class="filter-tabs" role="tablist" aria-label="Sort customer feedback">
+                        <button type="button" class="filter-tab active" data-feedback-filter="newest">Most recent</button>
+                        <button type="button" class="filter-tab" data-feedback-filter="highest">Highest rated</button>
+                        <button type="button" class="filter-tab" data-feedback-filter="lowest">Lowest rated</button>
+                    </div>
+                </div>
+                <div id="feedback-list" class="data-table-wrap"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Approval Modal -->
+    <div id="approvalModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+            <!-- Modal content will be loaded here -->
+        </div>
+    </div>
+
+    <div id="applicationModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"></div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/dashboard.js"></script>
+    <script src="js/charts.js"></script>
+</body>
+</html>

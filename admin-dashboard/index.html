@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClosetX Admin - Loading</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideUp {
+            from {
+                transform: translateY(30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+        
+        @keyframes loading {
+            0% { width: 0%; }
+            50% { width: 100%; }
+            100% { width: 0%; }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        .slide-up {
+            animation: slideUp 0.8s ease-out;
+        }
+        
+        .bounce {
+            animation: bounce 2s infinite;
+        }
+        
+        .loading-bar {
+            animation: loading 2s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center fade-in">
+    <div class="text-center slide-up">
+        <!-- Logo Icon -->
+        <div class="text-8xl mb-6 bounce text-[#B46750]">✦</div>
+        
+        <!-- Brand Name -->
+        <h1 class="text-6xl font-bold mb-2 text-[#26251F]">
+            ClosetX
+        </h1>
+        
+        <!-- Subtitle -->
+        <p class="text-gray-500 text-xl mb-12 font-light">Admin Dashboard</p>
+        
+        <!-- Loading Bar -->
+        <div class="w-72 h-1 bg-[#EAE7DF] rounded-full overflow-hidden mx-auto">
+            <div class="h-full bg-[#B46750] rounded-full loading-bar"></div>
+        </div>
+        
+        <!-- Footer Text -->
+        <p class="text-gray-500 text-sm mt-12">Powered by Snap Camera Kit AR</p>
+    </div>
+
+    <script>
+        // Redirect to login after 3 seconds
+        setTimeout(() => {
+            window.location.href = 'login.html';
+        }, 3000);
+    </script>
+</body>
+</html>

@@ -69,7 +69,24 @@ URLs and Lens Studio effect identifiers in `designs`. The approved-design
 catalog reads `front_image_url`, `back_image_url`, `price`, `category`, and
 Lens Studio identifiers. Product details can launch a design's Lens through
 Camera Kit when the Android token and published Lens metadata are configured.
-Sign-in, designer uploads, and admin moderation are not wired yet.
+The Flutter prototype does not yet include sign-in, designer application, or
+design-upload screens.
+
+### Admin dashboard
+
+The web dashboard is in `admin-dashboard/` and is deployed separately on
+Vercel. It uses the `is_closetx_admin()` database check for access. Admins can
+review designer applications, review design uploads with per-design Lens and
+Lens Group IDs, view approved designers, and view customer ratings/comments
+from `design_comments`.
+
+Before using the application-review screens, run
+`supabase/migrations/20261005205200_admin_review_workflows.sql` in the
+Supabase SQL Editor. It adds persistent application decisions and decline
+reasons, protects review fields from non-admin updates, and restricts design
+uploads to approved designers. The current Flutter prototype does not yet
+provide designer application or upload forms; application records must exist
+in `designer_profiles` before they can be reviewed in the dashboard.
 
 ## Current prototype status
 
