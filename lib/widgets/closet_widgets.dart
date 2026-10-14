@@ -32,6 +32,94 @@ class FashionImage extends StatelessWidget {
   }
 }
 
+/// A brand's logo in a circle, falling back to its initial.
+class BrandLogo extends StatelessWidget {
+  const BrandLogo({
+    required this.name,
+    required this.logoUrl,
+    this.size = 22,
+    super.key,
+  });
+
+  final String name;
+  final String? logoUrl;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = Text(
+      name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(),
+      style: TextStyle(
+        color: ink,
+        fontSize: size * 0.45,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+    final logoUrl = this.logoUrl;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      alignment: Alignment.center,
+      child: logoUrl == null || logoUrl.isEmpty
+          ? initial
+          : Image.network(
+              logoUrl,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => initial,
+            ),
+    );
+  }
+}
+
+/// Brand logo followed by the brand name.
+class BrandTag extends StatelessWidget {
+  const BrandTag({
+    required this.garment,
+    this.logoSize = 22,
+    this.style = const TextStyle(
+      color: muted,
+      fontSize: 9,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 1,
+    ),
+    super.key,
+  });
+
+  final Garment garment;
+  final double logoSize;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        BrandLogo(
+          name: garment.designer,
+          logoUrl: garment.designerLogoUrl,
+          size: logoSize,
+        ),
+        SizedBox(width: logoSize * 0.32),
+        Flexible(
+          child: Text(
+            garment.designer.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: style,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class GarmentCard extends StatelessWidget {
   const GarmentCard({
     required this.garment,
@@ -118,19 +206,9 @@ class GarmentCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            garment.designer.toUpperCase(),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: muted,
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-            ),
-          ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 9),
+          BrandTag(garment: garment),
+          const SizedBox(height: 5),
           Text(
             garment.name,
             maxLines: 1,

@@ -1,12 +1,13 @@
-import 'package:closetx/data/garments.dart';
 import 'package:closetx/state/closet_store.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'fixtures/garments.dart';
 
 void main() {
   late ClosetStore store;
 
   setUp(() {
-    store = ClosetStore(garments: sampleGarments);
+    store = ClosetStore(garments: testGarments);
   });
 
   tearDown(() {
@@ -14,7 +15,7 @@ void main() {
   });
 
   test('saved pieces toggle by garment', () {
-    final garment = sampleGarments.first;
+    final garment = testGarments.first;
 
     store.toggleSaved(garment);
     expect(store.savedGarments, [garment]);
@@ -23,25 +24,26 @@ void main() {
     expect(store.savedGarments, isEmpty);
   });
 
-  test('bag merges matching sizes and updates subtotal', () {
-    final garment = sampleGarments.first;
+  test('bag merges the same garment and updates subtotal', () {
+    final garment = testGarments.first;
+    final other = testGarments[1];
 
-    store.addToCart(garment, 'M');
-    store.addToCart(garment, 'M', quantity: 2);
-    store.addToCart(garment, 'L');
+    store.addToCart(garment);
+    store.addToCart(garment, quantity: 2);
+    store.addToCart(other);
 
     expect(store.cartCount, 4);
     expect(store.cartItems, hasLength(2));
-    expect(store.subtotal, garment.price * 4);
+    expect(store.subtotal, garment.price * 3 + other.price);
 
-    final mediumItem = store.cartItems.firstWhere((item) => item.size == 'M');
-    store.setQuantity(mediumItem, 1);
+    final item = store.cartItems.firstWhere((item) => item.garment == garment);
+    store.setQuantity(item, 1);
     expect(store.cartCount, 2);
-    expect(store.subtotal, garment.price * 2);
+    expect(store.subtotal, garment.price + other.price);
   });
 
   test('setting a quantity below one removes the bag item', () {
-    store.addToCart(sampleGarments.first, 'M');
+    store.addToCart(testGarments.first);
     store.setQuantity(store.cartItems.single, 0);
 
     expect(store.cartItems, isEmpty);
@@ -50,11 +52,26 @@ void main() {
   });
 
   test('replacing the catalog keeps saved item ids visible', () {
-    final garment = sampleGarments.first;
+    final garment = testGarments.first;
     store.toggleSaved(garment);
     store.replaceGarments([garment]);
 
     expect(store.garments, [garment]);
     expect(store.savedGarments, [garment]);
   });
+
+  test(
+    'failed catalog reload clears garments from the previous catalog',
+    () async {
+      store.replaceGarments([testGarments.first]);
+
+      await expectLater(
+        store.loadCatalog(() async => throw Exception('network unavailable')),
+        completes,
+      );
+
+      expect(store.garments, isEmpty);
+      expect(store.catalogError, isNotNull);
+    },
+  );
 }

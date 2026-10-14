@@ -1,6 +1,6 @@
 {
-    "name": "ClosetX",
-    "short_name": "ClosetX",
+    "name": "closetx",
+    "short_name": "closetx",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

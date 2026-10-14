@@ -1,18 +1,8 @@
-import java.util.Properties
-
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
-}
-
-val cameraKitApiToken = Properties().run {
-    val localPropertiesFile = rootProject.file("local.properties")
-    if (localPropertiesFile.exists()) {
-        localPropertiesFile.inputStream().use { load(it) }
-    }
-    getProperty("cameraKitApiToken", "").trim()
 }
 
 android {
@@ -38,7 +28,6 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        manifestPlaceholders["cameraKitApiToken"] = cameraKitApiToken
     }
 
     buildTypes {
@@ -49,10 +38,6 @@ android {
         }
     }
 
-}
-
-dependencies {
-    implementation("com.snap.camerakit:support-camera-activity:1.50.0")
 }
 
 flutter {

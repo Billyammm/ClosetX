@@ -12,8 +12,9 @@ class Garment {
     required this.impact,
     required this.description,
     this.backImageUrl,
-    this.lensId,
-    this.lensGroupId,
+    this.shirtColorHex,
+    this.designerLogoUrl,
+    this.frontImageUrl,
   });
 
   final String id;
@@ -21,13 +22,24 @@ class Garment {
   final String designer;
   final int price;
   final String category;
+  /// Product photo shown in lists and on the detail page.
   final String imageUrl;
   final Color color;
   final String impact;
   final String description;
   final String? backImageUrl;
-  final String? lensId;
-  final String? lensGroupId;
+
+  /// Fabric colour of the 3D shirt, as `#RRGGBB`.
+  final String? shirtColorHex;
+
+  /// The brand's logo, shown next to [designer].
+  final String? designerLogoUrl;
+
+  /// Front artwork printed on the 3D shirt. Falls back to [imageUrl] for
+  /// garments without separate artwork.
+  final String? frontImageUrl;
+
+  String get frontArtworkUrl => frontImageUrl ?? imageUrl;
 
   String get formattedPrice => formatPeso(price);
 }

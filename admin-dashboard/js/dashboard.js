@@ -1,4 +1,3 @@
-// Global variables
 let allDesigns = [];
 let allDesigners = [];
 let allFeedback = [];
@@ -26,13 +25,9 @@ function safeImageUrl(value) {
     }
 }
 
-function safeExternalUrl(value) {
-    try {
-        const url = new URL(value);
-        return ['http:', 'https:'].includes(url.protocol) ? escapeHtml(url.href) : '';
-    } catch {
-        return '';
-    }
+function formatDate(value) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString();
 }
 
 function showDashboardError(message) {
@@ -42,8 +37,7 @@ function showDashboardError(message) {
         banner.id = 'dashboard-error';
         banner.setAttribute('role', 'alert');
         banner.className = 'mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800';
-        const header = document.querySelector('main header');
-        header?.insertAdjacentElement('afterend', banner);
+        document.querySelector('main header')?.insertAdjacentElement('afterend', banner);
     }
     banner.textContent = message;
     banner.classList.remove('hidden');
@@ -53,51 +47,60 @@ function clearDashboardError() {
     document.getElementById('dashboard-error')?.classList.add('hidden');
 }
 
+function updateAdminIdentity(session) {
+    const email = session?.user?.email || 'Administrator';
+    const initials = email.split('@')[0].split(/[._-]/).filter(Boolean).slice(0, 2)
+        .map((part) => part[0]).join('').toUpperCase() || 'AD';
+    for (const id of ['admin-name', 'topbar-admin-name']) {
+        const element = document.getElementById(id);
+        if (element) element.textContent = email;
+    }
+    for (const id of ['admin-avatar', 'topbar-avatar']) {
+        const element = document.getElementById(id);
+        if (element) element.textContent = initials;
+    }
+}
+
 async function checkAuth() {
     try {
+        await closetxSupabaseReady;
         const { data, error } = await closetxSupabase.auth.getSession();
         if (error) throw error;
         if (!data.session) {
             window.location.replace('login.html');
             return false;
         }
-
         if (!(await isClosetXAdmin())) {
             const { error: signOutError } = await closetxSupabase.auth.signOut();
             if (signOutError) throw signOutError;
             window.location.replace('login.html');
             return false;
         }
-
         updateAdminIdentity(data.session);
         return true;
     } catch (error) {
         console.error('Admin authorization failed:', error);
-        showDashboardError(`Could not verify admin access: ${error.message}`);
+        showDashboardError(`Could not connect or verify admin access: ${error.message}`);
         return false;
     }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
     bindDashboardControls();
-    if (await checkAuth()) {
-        await loadDashboard();
-    }
+    if (await checkAuth()) await loadDashboard();
 });
 
 function bindDashboardControls() {
     document.getElementById('global-search')?.addEventListener('input', applyCurrentSearch);
     document.getElementById('notification-button')?.addEventListener('click', () => {
-        const pendingApplications = Number(document.getElementById('applications-badge')?.textContent || 0);
-        const target = pendingApplications ? 'applications' : 'pending';
-        if (target === 'applications') {
+        const applications = Number(document.getElementById('applications-badge')?.textContent || 0);
+        if (applications) {
             applicationFilter = 'pending';
-            document.querySelectorAll('[data-application-filter]').forEach((tab) => tab.classList.toggle('active', tab.dataset.applicationFilter === 'pending'));
+            showSection('applications');
         } else {
             designFilter = 'pending';
-            document.querySelectorAll('[data-design-filter]').forEach((tab) => tab.classList.toggle('active', tab.dataset.designFilter === 'pending'));
+            showSection('pending');
         }
-        showSection(target);
     });
     document.querySelectorAll('[data-design-filter]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -120,7 +123,16 @@ function bindDashboardControls() {
             renderFeedback();
         });
     });
+    for (const modalId of ['approvalModal', 'applicationModal']) {
+        document.getElementById(modalId)?.addEventListener('click', (event) => {
+            if (event.target.id === modalId) closeModal(modalId);
+        });
+    }
     document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeModal('approvalModal');
+            closeModal('applicationModal');
+        }
         if (event.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
             event.preventDefault();
             document.getElementById('global-search')?.focus();
@@ -130,30 +142,17 @@ function bindDashboardControls() {
 
 function applyCurrentSearch() {
     const query = document.getElementById('global-search')?.value.trim().toLowerCase() || '';
-    const visibleSection = document.getElementById(`${currentSection}-section`);
-    visibleSection?.querySelectorAll('[data-searchable]').forEach((row) => {
+    document.getElementById(`${currentSection}-section`)?.querySelectorAll('[data-searchable]').forEach((row) => {
         row.classList.toggle('hidden', !row.textContent.toLowerCase().includes(query));
     });
 }
 
-function updateAdminIdentity(session) {
-    const email = session?.user?.email || 'Administrator';
-    const initials = email.split('@')[0].split(/[._-]/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'AD';
-    for (const id of ['admin-name', 'topbar-admin-name']) {
-        const element = document.getElementById(id);
-        if (element) element.textContent = email;
-    }
-    for (const id of ['admin-avatar', 'topbar-avatar']) {
-        const element = document.getElementById(id);
-        if (element) element.textContent = initials;
-    }
-}
-
-// Load Dashboard
 async function loadDashboard() {
     clearDashboardError();
     try {
-        await Promise.all([loadStats(), loadDesigns(), loadDesigners(), loadFeedback()]);
+        await Promise.all([loadDesigns(), loadDesigners(), loadFeedback()]);
+        renderStats();
+        renderRecentActivity();
         renderCharts();
         showSection(currentSection);
     } catch (error) {
@@ -162,50 +161,77 @@ async function loadDashboard() {
     }
 }
 
-// Load Statistics
-async function loadStats() {
-    try {
-        const [
-            pendingResult,
-            approvedResult,
-            rejectedResult,
-            applicationsResult,
-            approvedDesignersResult,
-            feedbackResult
-        ] = await Promise.all([
-            closetxSupabase.from('designs').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-            closetxSupabase.from('designs').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
-            closetxSupabase.from('designs').select('*', { count: 'exact', head: true }).eq('status', 'rejected'),
-            closetxSupabase.from('designer_profiles').select('*', { count: 'exact', head: true }).eq('application_status', 'pending'),
-            closetxSupabase.from('designer_profiles').select('*', { count: 'exact', head: true }).eq('application_status', 'approved'),
-            closetxSupabase.from('design_comments').select('*', { count: 'exact', head: true })
-        ]);
-        
-        const results = [pendingResult, approvedResult, rejectedResult, applicationsResult, approvedDesignersResult, feedbackResult];
-        const failedResult = results.find((result) => result.error);
-        if (failedResult) throw failedResult.error;
+async function loadDesigns() {
+    const { data, error } = await closetxSupabase
+        .from('designs')
+        .select('id, designer_id, brand_id, title, description, front_image_url, back_image_url, thumbnail_url, price, category, shirt_color, is_published, review_status, rejection_reason, created_at, brands(name, bio, location, logo_url)')
+        .order('created_at', { ascending: false });
+    if (error) throw new Error(`Could not load designs: ${error.message}`);
 
-        const stats = {
-            pending: pendingResult.count ?? 0,
-            approved: approvedResult.count ?? 0,
-            rejected: rejectedResult.count ?? 0,
-            applications: applicationsResult.count ?? 0,
-            designers: approvedDesignersResult.count ?? 0,
-            feedback: feedbackResult.count ?? 0
-        };
-        
-        renderStatsCards(stats);
-        updateBadges(stats);
-        
-    } catch (error) {
-        throw new Error(`Could not load design statistics: ${error.message}`);
-    }
+    allDesigns = (data || []).map((design) => ({
+        ...design,
+        status: design.review_status,
+        designer: allDesigners.find((designer) => designer.id === design.designer_id)
+            || { brand_name: design.brands?.name || 'ClosetX Designer' },
+    }));
 }
 
-// Render Stats Cards
-function renderStatsCards(stats) {
-    const statsCards = document.getElementById('stats-cards');
-    statsCards.innerHTML = `
+async function loadDesigners() {
+    const { data: profiles, error: profileError } = await closetxSupabase
+        .from('profiles')
+        .select('id, email, full_name, role, designer_status, designer_rejection_reason, created_at')
+        .eq('role', 'designer')
+        .order('created_at', { ascending: false });
+    if (profileError) throw new Error(`Could not load designer applications: ${profileError.message}`);
+
+    const { data: brands, error: brandError } = await closetxSupabase
+        .from('brands')
+        .select('id, owner_id, name, bio, location, logo_url, created_at');
+    if (brandError) throw new Error(`Could not load designer brands: ${brandError.message}`);
+
+    const brandsByOwner = new Map((brands || []).map((brand) => [brand.owner_id, brand]));
+    allDesigners = (profiles || []).map((profile) => {
+        const brand = brandsByOwner.get(profile.id);
+        return {
+            ...profile,
+            user_id: profile.id,
+            application_status: profile.designer_status,
+            application_rejection_reason: profile.designer_rejection_reason,
+            brand_name: brand?.name || '',
+            location: brand?.location || '',
+            bio: brand?.bio || '',
+            profile_image_url: brand?.logo_url || '',
+            brand_created_at: brand?.created_at || null,
+        };
+    });
+
+    const designersById = new Map(allDesigners.map((designer) => [designer.id, designer]));
+    allDesigns = allDesigns.map((design) => ({
+        ...design,
+        designer: designersById.get(design.designer_id)
+            || { brand_name: design.brands?.name || 'ClosetX Designer' },
+    }));
+}
+
+async function loadFeedback() {
+    const { data, error } = await closetxSupabase
+        .from('feedback')
+        .select('id, user_id, author_name, author_email, message, rating, created_at')
+        .order('created_at', { ascending: false });
+    if (error) throw new Error(`Could not load customer feedback: ${error.message}`);
+    allFeedback = data || [];
+}
+
+function renderStats() {
+    const stats = {
+        pending: allDesigns.filter((design) => design.status === 'pending').length,
+        approved: allDesigns.filter((design) => design.status === 'approved').length,
+        rejected: allDesigns.filter((design) => design.status === 'rejected').length,
+        applications: allDesigners.filter((designer) => designer.application_status === 'pending').length,
+        designers: allDesigners.filter((designer) => designer.application_status === 'approved').length,
+        feedback: allFeedback.length,
+    };
+    document.getElementById('stats-cards').innerHTML = `
         <button type="button" onclick="showSection('applications')" class="metric-card">
             <span class="metric-icon metric-amber"><i class="fas fa-id-card"></i></span>
             <span><strong>${stats.applications}</strong><small>Pending applications</small></span>
@@ -213,891 +239,281 @@ function renderStatsCards(stats) {
         </button>
         <button type="button" onclick="showSection('pending')" class="metric-card">
             <span class="metric-icon metric-slate"><i class="fas fa-images"></i></span>
-            <span><strong>${stats.pending}</strong><small>Asset requests</small></span>
+            <span><strong>${stats.pending}</strong><small>Designs awaiting review</small></span>
             <i class="fas fa-arrow-right metric-arrow"></i>
         </button>
         <button type="button" onclick="showSection('designers')" class="metric-card">
             <span class="metric-icon metric-emerald"><i class="fas fa-users"></i></span>
-            <span><strong>${stats.designers}</strong><small>Approved designers</small></span>
+            <span><strong>${stats.designers}</strong><small>Accepted designers</small></span>
             <i class="fas fa-arrow-right metric-arrow"></i>
         </button>
         <button type="button" onclick="showSection('feedback')" class="metric-card">
             <span class="metric-icon metric-slate"><i class="fas fa-comment-dots"></i></span>
-            <span><strong>${stats.feedback}</strong><small>Design feedback</small></span>
+            <span><strong>${stats.feedback}</strong><small>Customer feedback</small></span>
             <i class="fas fa-arrow-right metric-arrow"></i>
         </button>
     `;
-}
-
-// Update Navigation Badges
-function updateBadges(stats) {
     document.getElementById('pending-badge').textContent = stats.pending;
     document.getElementById('applications-badge').textContent = stats.applications;
     document.getElementById('feedback-badge').textContent = stats.feedback;
     document.getElementById('notification-count').textContent = stats.applications + stats.pending;
-    document.getElementById('notification-button').setAttribute('aria-label', `${stats.applications} pending designer applications and ${stats.pending} pending design requests`);
+    document.getElementById('notification-button').setAttribute(
+        'aria-label',
+        `${stats.applications} pending designer applications and ${stats.pending} pending designs`,
+    );
     document.getElementById('pending-filter-count').textContent = stats.pending;
     document.getElementById('application-filter-count').textContent = stats.applications;
 }
 
-// Load All Designs
-async function loadDesigns() {
-    try {
-        const { data: designs, error } = await closetxSupabase
-            .from('designs')
-            .select('id, designer_id, title, description, front_image_url, back_image_url, price, category, status, lens_id, lens_group_id, rejection_reason, likes_count, views_count, created_at, updated_at')
-            .order('created_at', { ascending: false });
-        
-        if (error) throw error;
-        
-        allDesigns = designs || [];
-        
-        const designerIds = [...new Set(allDesigns.map((design) => design.designer_id).filter(Boolean))];
-        let designers = [];
-        if (designerIds.length > 0) {
-            const { data, error: designerError } = await closetxSupabase
-                .from('designer_profiles')
-                .select('id, user_id, brand_name, location, bio, profile_image_url, is_verified, created_at')
-                .in('user_id', designerIds);
-            if (designerError) throw designerError;
-            designers = data || [];
-        }
-        
-        const designersMap = new Map(designers.map((designer) => [designer.user_id, designer]));
-        
-        allDesigns = allDesigns.map(design => ({
-            ...design,
-            designer: designersMap.get(design.designer_id)
-        }));
-        
-        renderRecentActivity();
-        
-    } catch (error) {
-        throw new Error(`Could not load designs and designer profiles: ${error.message}`);
-    }
-}
-
-async function loadDesigners() {
-    const { data, error } = await closetxSupabase
-        .from('designer_profiles')
-        .select('id, user_id, brand_name, location, bio, profile_image_url, is_verified, application_status, application_rejection_reason, created_at, shopee_link, tiktok_link, lazada_link, facebook_link, instagram_link, twitter_link, website_link')
-        .order('created_at', { ascending: false });
-    if (error) throw new Error(`Could not load designer profiles: ${error.message}`);
-    const designerProfiles = data || [];
-    const userIds = [...new Set(designerProfiles.map((designer) => designer.user_id).filter(Boolean))];
-    let profiles = [];
-    if (userIds.length) {
-        const { data: profileData, error: profileError } = await closetxSupabase
-            .from('profiles')
-            .select('id, full_name, email')
-            .in('id', userIds);
-        if (profileError) throw new Error(`Could not load applicant account details: ${profileError.message}`);
-        profiles = profileData || [];
-    }
-    const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
-    allDesigners = designerProfiles.map((designer) => ({
-        ...designer,
-        profile: profilesById.get(designer.user_id)
-    }));
-}
-
-async function loadFeedback() {
-    const { data: comments, error } = await closetxSupabase
-        .from('design_comments')
-        .select('id, design_id, user_id, comment_text, rating, created_at')
-        .order('created_at', { ascending: false });
-    if (error) throw new Error(`Could not load customer feedback: ${error.message}`);
-
-    const designIds = [...new Set((comments || []).map((comment) => comment.design_id).filter(Boolean))];
-    const userIds = [...new Set((comments || []).map((comment) => comment.user_id).filter(Boolean))];
-    const [designResult, profileResult] = await Promise.all([
-        designIds.length
-            ? closetxSupabase.from('designs').select('id, title').in('id', designIds)
-            : Promise.resolve({ data: [], error: null }),
-        userIds.length
-            ? closetxSupabase.from('profiles').select('id, full_name, email').in('id', userIds)
-            : Promise.resolve({ data: [], error: null })
-    ]);
-    if (designResult.error) throw new Error(`Could not load designs for feedback: ${designResult.error.message}`);
-    if (profileResult.error) throw new Error(`Could not load feedback authors: ${profileResult.error.message}`);
-
-    const designsById = new Map((designResult.data || []).map((design) => [design.id, design]));
-    const profilesById = new Map((profileResult.data || []).map((profile) => [profile.id, profile]));
-    allFeedback = (comments || []).map((comment) => ({
-        ...comment,
-        design: designsById.get(comment.design_id),
-        author: profilesById.get(comment.user_id)
-    }));
-}
-
-// Render Recent Activity
 function renderRecentActivity() {
-    const recentActivity = document.getElementById('recent-activity');
-    const recentDesigns = allDesigns.slice(0, 5);
-    
-    if (recentDesigns.length === 0) {
-        recentActivity.innerHTML = '<div class="empty-state"><h3>No design requests yet</h3><p>New submissions will appear here.</p></div>';
-        return;
-    }
-    
-    recentActivity.innerHTML = `<table class="admin-table">
-        <thead><tr><th>Design</th><th>Designer</th><th>Submitted</th><th>Status</th></tr></thead>
-        <tbody>${recentDesigns.map((design) => `<tr data-searchable>
-            <td><div class="table-identity"><img src="${safeImageUrl(design.front_image_url)}" alt="" class="table-thumbnail"><div><strong>${escapeHtml(design.title)}</strong><small>${escapeHtml(design.category || 'Uncategorized')}</small></div></div></td>
-            <td>${escapeHtml(design.designer?.brand_name || 'Unknown designer')}</td>
-            <td>${escapeHtml(new Date(design.created_at).toLocaleDateString())}</td>
-            <td><span class="status-pill status-${escapeHtml(design.status)}">${escapeHtml(design.status === 'rejected' ? 'Declined' : design.status)}</span></td>
-        </tr>`).join('')}</tbody>
-    </table>`;
+    const recent = allDesigns.slice(0, 5);
+    document.getElementById('recent-activity').innerHTML = recent.length ? `
+        <table class="admin-table">
+            <thead><tr><th>Design</th><th>Designer</th><th>Submitted</th><th>Status</th></tr></thead>
+            <tbody>${recent.map((design) => `<tr data-searchable>
+                <td><div class="table-identity"><img src="${safeImageUrl(design.thumbnail_url || design.front_image_url)}" alt="" class="table-thumbnail"><div><strong>${escapeHtml(design.title)}</strong><small>${escapeHtml(design.category || 'T-Shirts')}</small></div></div></td>
+                <td>${escapeHtml(design.designer?.brand_name)}</td>
+                <td>${escapeHtml(formatDate(design.created_at))}</td>
+                <td>${statusPill(design.status)}</td>
+            </tr>`).join('')}</tbody>
+        </table>` : '<div class="empty-state"><h3>No design submissions yet</h3><p>New designer uploads will appear here.</p></div>';
 }
 
-// Get Status Color
-function getStatusColor(status) {
-    switch(status) {
-        case 'pending': return 'bg-yellow-500/20 text-yellow-500';
-        case 'approved': return 'bg-cyan-500/20 text-cyan-500';
-        case 'rejected': return 'bg-red-500/20 text-red-500';
-        default: return 'bg-gray-500/20 text-gray-500';
-    }
+function statusPill(status) {
+    const label = status === 'approved' ? 'Accepted' : status === 'rejected' ? 'Denied' : 'Pending';
+    return `<span class="status-pill status-${escapeHtml(status)}">${label}</span>`;
 }
 
-// Show Section
 function showSection(section) {
     currentSection = section;
-    
-    // Update navigation
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.classList.remove('active');
-    });
-    document.getElementById(`nav-${section}`).classList.add('active');
-    
-    // Hide all sections
-    document.querySelectorAll('.section').forEach(sec => {
-        sec.classList.add('hidden');
-    });
-    
-    // Update header
+    document.querySelectorAll('.nav-item').forEach((item) => item.classList.remove('active'));
+    document.getElementById(`nav-${section}`)?.classList.add('active');
+    document.querySelectorAll('.section').forEach((item) => item.classList.add('hidden'));
     const titles = {
-        overview: { title: 'Overview', subtitle: 'Dashboard analytics and insights' },
-        pending: { title: 'Asset approvals', subtitle: 'Review uploaded designs, inspect details, and make a decision' },
-        applications: { title: 'Designer Applications', subtitle: 'Review applications to join ClosetX as a designer' },
-        designers: { title: 'Designers', subtitle: 'Approved designer profiles' },
-        feedback: { title: 'Customer Feedback', subtitle: 'Ratings and comments on designs' }
+        overview: ['Overview', 'Dashboard analytics and insights'],
+        pending: ['Design approvals', 'Review and approve designer uploads'],
+        applications: ['Designer applications', 'Accept or deny requests to join ClosetX as a designer'],
+        designers: ['Designers', 'Accepted designer accounts'],
+        feedback: ['Customer feedback', 'Feedback submitted from the ClosetX app'],
     };
-    
-    document.getElementById('page-title').textContent = titles[section].title;
-    document.getElementById('page-subtitle').textContent = titles[section].subtitle;
-    
-    // Show selected section
-    const sectionElement = document.getElementById(`${section}-section`);
-    if (sectionElement) {
-        sectionElement.classList.remove('hidden');
-        
-        // Render section content
-        switch(section) {
-            case 'pending':
-                renderPendingDesigns();
-                break;
-            case 'designers':
-                renderDesigners();
-                break;
-            case 'applications':
-                renderApplications();
-                break;
-            case 'feedback':
-                renderFeedback();
-                break;
-        }
-        applyCurrentSearch();
-    }
+    if (!titles[section]) return;
+    document.getElementById('page-title').textContent = titles[section][0];
+    document.getElementById('page-subtitle').textContent = titles[section][1];
+    document.getElementById(`${section}-section`)?.classList.remove('hidden');
+    if (section === 'pending') renderPendingDesigns();
+    if (section === 'applications') renderApplications();
+    if (section === 'designers') renderDesigners();
+    if (section === 'feedback') renderFeedback();
+    applyCurrentSearch();
 }
 
-// Render Pending Designs (Organized by Designer)
 function renderPendingDesigns() {
-    const container = document.getElementById('pending-designs');
     const designs = designFilter === 'all'
         ? allDesigns
         : allDesigns.filter((design) => design.status === designFilter);
-    document.getElementById('asset-results-count').textContent = `${designs.length} ${designs.length === 1 ? 'asset' : 'assets'}`;
-
-    if (designs.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <span class="empty-state-icon"><i class="far fa-images"></i></span>
-                <h3>No ${designFilter === 'pending' ? 'pending assets' : `${escapeHtml(designFilter)} assets`}</h3>
-                <p>${designFilter === 'pending' ? 'New design submissions will appear here for review.' : 'There are no matching design requests.'}</p>
-            </div>
-        `;
-        return;
-    }
-
-    container.innerHTML = `
+    document.getElementById('asset-results-count').textContent = `${designs.length} ${designs.length === 1 ? 'design' : 'designs'}`;
+    document.getElementById('pending-designs').innerHTML = designs.length ? `
         <table class="admin-table">
-            <thead><tr><th>Asset</th><th>Designer</th><th>Category</th><th>Submitted</th><th>Status</th><th></th></tr></thead>
-            <tbody>${designs.map((design) => `
-                <tr data-searchable>
-                    <td>
-                        <div class="table-identity">
-                            <img src="${safeImageUrl(design.front_image_url)}" alt="" class="table-thumbnail">
-                            <div><strong>${escapeHtml(design.title)}</strong><small>₱${escapeHtml(Number(design.price || 0).toLocaleString())}</small></div>
-                        </div>
-                    </td>
-                    <td>${escapeHtml(design.designer?.brand_name || 'Unknown designer')}</td>
-                    <td><span class="category-tag">${escapeHtml(design.category || 'Uncategorized')}</span></td>
-                    <td>${escapeHtml(new Date(design.created_at).toLocaleDateString())}</td>
-                    <td><span class="status-pill status-${escapeHtml(design.status)}">${escapeHtml(design.status === 'rejected' ? 'Declined' : design.status)}</span></td>
-                    <td><button type="button" data-design-id="${escapeHtml(design.id)}" class="row-action">${design.status === 'pending' ? 'Inspect request' : 'View details'} <i class="fas fa-arrow-right"></i></button></td>
-                </tr>
-            `).join('')}</tbody>
-        </table>
-    `;
-    bindDesignCardActions(container);
+            <thead><tr><th>Design</th><th>Designer</th><th>Category</th><th>Submitted</th><th>Status</th><th></th></tr></thead>
+            <tbody>${designs.map((design) => `<tr data-searchable>
+                <td><div class="table-identity"><img src="${safeImageUrl(design.thumbnail_url || design.front_image_url)}" alt="" class="table-thumbnail"><div><strong>${escapeHtml(design.title)}</strong><small>₱${escapeHtml(Number(design.price || 0).toLocaleString())}</small></div></div></td>
+                <td>${escapeHtml(design.designer?.brand_name || 'ClosetX Designer')}</td>
+                <td>${escapeHtml(design.category || 'T-Shirts')}</td>
+                <td>${escapeHtml(formatDate(design.created_at))}</td>
+                <td>${statusPill(design.status)}</td>
+                <td><button type="button" data-design-id="${escapeHtml(design.id)}" class="row-action">${design.status === 'pending' ? 'Review' : 'Details'} <i class="fas fa-arrow-right"></i></button></td>
+            </tr>`).join('')}</tbody>
+        </table>` : `<div class="empty-state"><span class="empty-state-icon"><i class="far fa-images"></i></span><h3>No matching designs</h3><p>New uploads appear here when designers submit them.</p></div>`;
+    document.getElementById('pending-designs').querySelectorAll('[data-design-id]').forEach((button) => {
+        button.addEventListener('click', () => openDesignReview(button.dataset.designId));
+    });
     applyCurrentSearch();
 }
 
 function renderApplications() {
+    const applications = allDesigners.filter((designer) => applicationFilter === 'all'
+        || designer.application_status === applicationFilter);
     const container = document.getElementById('applications-list');
-    const filtered = allDesigners.filter((designer) => applicationFilter === 'all'
-        || (designer.application_status || (designer.is_verified ? 'approved' : 'pending')) === applicationFilter);
-
-    if (!filtered.length) {
-        container.innerHTML = `<div class="empty-state"><span class="empty-state-icon"><i class="far fa-id-card"></i></span><h3>No ${applicationFilter === 'pending' ? 'pending applications' : 'applications found'}</h3><p>Designer applications will appear here when submitted.</p></div>`;
-        return;
-    }
-
-    container.innerHTML = `
+    container.innerHTML = applications.length ? `
         <table class="admin-table">
-            <thead><tr><th>Applicant</th><th>Location</th><th>Portfolio</th><th>Applied</th><th>Status</th><th>Actions</th></tr></thead>
-            <tbody>${filtered.map((designer) => {
-                const status = designer.application_status || (designer.is_verified ? 'approved' : 'pending');
-                const applicant = designer.profile?.full_name || designer.profile?.email || 'Designer applicant';
-                const portfolio = designer.website_link || designer.instagram_link || designer.tiktok_link;
-                return `
-                    <tr data-searchable>
-                        <td>
-                            <div class="table-identity">
-                                <div class="table-avatar">${designer.profile_image_url ? `<img src="${safeImageUrl(designer.profile_image_url)}" alt="">` : escapeHtml((designer.brand_name || applicant).slice(0, 2).toUpperCase())}</div>
-                                <div><strong>${escapeHtml(designer.brand_name || 'Unnamed brand')}</strong><small>${escapeHtml(applicant)}</small></div>
-                            </div>
-                        </td>
-                        <td>${escapeHtml(designer.location || '—')}</td>
-                        <td>${portfolio ? `<a class="portfolio-link" href="${safeExternalUrl(portfolio)}" target="_blank" rel="noopener noreferrer">View portfolio <i class="fas fa-arrow-up-right-from-square"></i></a>` : '<span class="text-gray-400">Not provided</span>'}</td>
-                        <td>${escapeHtml(new Date(designer.created_at).toLocaleDateString())}</td>
-                        <td><span class="status-pill status-${escapeHtml(status)}">${escapeHtml(status === 'approved' ? 'Accepted' : status === 'rejected' ? 'Declined' : 'Pending')}</span></td>
-                        <td><div class="row-actions">
-                            <button type="button" data-application-id="${escapeHtml(designer.id)}" class="row-action">Details</button>
-                            ${status === 'pending' ? `<button type="button" data-application-decline="${escapeHtml(designer.id)}" class="row-action row-action-danger">Decline</button><button type="button" data-application-accept="${escapeHtml(designer.id)}" class="row-action row-action-primary">Accept</button>` : ''}
-                        </div></td>
-                    </tr>
-                `;
+            <thead><tr><th>Applicant</th><th>Email</th><th>Brand</th><th>Applied</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>${applications.map((designer) => {
+                const name = designer.full_name || 'Designer applicant';
+                return `<tr data-searchable>
+                    <td><div class="table-identity"><div class="table-avatar">${escapeHtml(name.slice(0, 2).toUpperCase())}</div><div><strong>${escapeHtml(name)}</strong><small>${escapeHtml(designer.id)}</small></div></div></td>
+                    <td>${escapeHtml(designer.email)}</td>
+                    <td>${escapeHtml(designer.brand_name || 'Not created yet')}</td>
+                    <td>${escapeHtml(formatDate(designer.created_at))}</td>
+                    <td>${statusPill(designer.application_status)}</td>
+                    <td><div class="row-actions">
+                        <button type="button" data-application-id="${escapeHtml(designer.id)}" class="row-action">Details</button>
+                        ${designer.application_status === 'pending' ? `<button type="button" data-review-application="${escapeHtml(designer.id)}" class="row-action row-action-primary">Review</button>` : ''}
+                    </div></td>
+                </tr>`;
             }).join('')}</tbody>
-        </table>
-    `;
-
-    container.querySelectorAll('[data-application-id], [data-application-accept], [data-application-decline]').forEach((button) => {
-        button.addEventListener('click', () => {
-            const id = button.dataset.applicationId || button.dataset.applicationAccept || button.dataset.applicationDecline;
-            if (button.hasAttribute('data-application-accept')) {
-                if (window.confirm('Accept this designer application?')) reviewDesignerApplication(id, 'approved');
-                return;
-            }
-            openApplicationModal(id);
-        });
+        </table>` : '<div class="empty-state"><span class="empty-state-icon"><i class="far fa-id-card"></i></span><h3>No matching applications</h3><p>Designer sign-ups will appear here for review.</p></div>';
+    container.querySelectorAll('[data-application-id], [data-review-application]').forEach((button) => {
+        button.addEventListener('click', () => openApplication(button.dataset.applicationId || button.dataset.reviewApplication));
     });
     applyCurrentSearch();
 }
 
-function openApplicationModal(applicationId) {
-    const designer = allDesigners.find((item) => item.id === applicationId);
+function openApplication(id) {
+    const designer = allDesigners.find((item) => item.id === id);
     if (!designer) return;
-
     const modal = document.getElementById('applicationModal');
-    const isPending = designer.application_status === 'pending';
-    const accountName = designer.profile?.full_name || 'Name not provided';
-    const socialLinks = [
-        ['Website', designer.website_link],
-        ['Shopee', designer.shopee_link],
-        ['TikTok', designer.tiktok_link],
-        ['Lazada', designer.lazada_link],
-        ['Facebook', designer.facebook_link],
-        ['Instagram', designer.instagram_link],
-        ['Twitter', designer.twitter_link]
-    ].filter(([, url]) => safeExternalUrl(url));
-
-    modal.innerHTML = `
+    const rejected = designer.application_status === 'rejected';
+    modal.innerHTML = `<div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
         <div class="flex items-center justify-between border-b border-gray-200 p-5">
-            <div>
-                <h2 class="text-xl font-bold text-gray-900">Designer application</h2>
-                <p class="text-sm text-gray-500">${escapeHtml(designer.brand_name || 'Unnamed brand')}</p>
-            </div>
-            <button type="button" data-close-application class="px-3 py-2 text-gray-500" aria-label="Close application">✕</button>
+            <div><h2 class="text-xl font-bold text-gray-900">Designer application</h2><p class="text-sm text-gray-500">${escapeHtml(designer.full_name || 'Applicant')}</p></div>
+            <button type="button" data-close-modal class="px-3 py-2 text-gray-500" aria-label="Close">✕</button>
         </div>
-        <div class="space-y-5 p-5">
-            <div class="flex items-center gap-4">
-                ${designer.profile_image_url
-                    ? `<img src="${safeImageUrl(designer.profile_image_url)}" alt="" class="h-16 w-16 rounded-full object-cover">`
-                    : '<div class="flex h-16 w-16 items-center justify-center rounded-full bg-gray-700 text-xl font-bold">✦</div>'}
-                <div>
-                    <h3 class="font-semibold text-gray-900">${escapeHtml(accountName)}</h3>
-                    <p class="text-sm text-gray-500">${escapeHtml(designer.profile?.email || 'No email')}</p>
-                    <p class="text-sm text-gray-500">${escapeHtml(designer.location || 'Location not provided')}</p>
-                </div>
-            </div>
-            <div class="rounded-xl bg-gray-50 p-4">
-                <h3 class="mb-2 font-semibold text-gray-900">About the designer</h3>
-                <p class="whitespace-pre-wrap text-sm text-gray-700">${escapeHtml(designer.bio || 'No biography provided.')}</p>
-            </div>
-            ${socialLinks.length ? `
-                <div>
-                    <h3 class="mb-2 font-semibold text-gray-900">Portfolio and links</h3>
-                    <ul class="space-y-1 text-sm">
-                        ${socialLinks.map(([label, url]) => `<li><a class="text-cyan-600 underline" href="${safeExternalUrl(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a></li>`).join('')}
-                    </ul>
-                </div>
-            ` : ''}
-            ${designer.application_rejection_reason ? `
-                <div class="rounded-xl bg-red-50 p-4 text-sm text-red-800">
-                    <strong>Previous decision:</strong> ${escapeHtml(designer.application_rejection_reason)}
-                </div>
-            ` : ''}
-            ${isPending ? `
-                <label class="block text-sm font-medium text-gray-700" for="applicationRejectionReason">
-                    Feedback note (optional)
-                    <textarea id="applicationRejectionReason" rows="3" class="mt-2 w-full rounded-xl border border-gray-200 bg-white p-3" placeholder="Explain what needs to be addressed"></textarea>
-                </label>
-                <div id="applicationModalError" class="hidden rounded-xl bg-red-50 p-3 text-sm text-red-800" role="alert"></div>
-            ` : ''}
+        <div class="space-y-4 p-5">
+            <p><strong>Email:</strong> ${escapeHtml(designer.email)}</p>
+            <p><strong>Account created:</strong> ${escapeHtml(formatDate(designer.created_at))}</p>
+            <p><strong>Current status:</strong> ${escapeHtml(designer.application_status)}</p>
+            ${designer.brand_name ? `<div class="rounded-xl bg-gray-50 p-4"><h3 class="font-semibold">Brand: ${escapeHtml(designer.brand_name)}</h3><p>${escapeHtml(designer.bio || 'No brand description.')}</p><p>${escapeHtml(designer.location || '')}</p></div>` : '<p class="text-gray-500">The applicant has not created a brand yet.</p>'}
+            ${designer.application_rejection_reason ? `<div class="rounded-xl bg-red-50 p-4 text-sm text-red-800"><strong>Previous decision:</strong> ${escapeHtml(designer.application_rejection_reason)}</div>` : ''}
+            ${designer.application_status === 'pending' ? `<label class="block text-sm font-medium">Denial reason (required if denying)<textarea id="application-reason" rows="3" class="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"></textarea></label><p id="application-error" class="hidden text-sm text-red-700"></p>` : ''}
         </div>
         <div class="flex gap-3 border-t border-gray-200 p-5">
-            ${isPending ? `
-                <button type="button" data-decline-application class="flex-1 rounded-xl bg-red-600 px-4 py-3 font-semibold text-white">Decline</button>
-                <button type="button" data-approve-application class="flex-1 rounded-xl bg-green-700 px-4 py-3 font-semibold text-white">Accept application</button>
-            ` : '<button type="button" data-close-application class="flex-1 rounded-xl bg-gray-100 px-4 py-3 font-semibold text-gray-900">Close</button>'}
+            ${designer.application_status === 'pending' ? `<button type="button" data-deny-application class="flex-1 rounded-xl bg-red-500 px-4 py-3 font-semibold text-white">Deny</button><button type="button" data-accept-application class="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white">Accept</button>` : '<button type="button" data-close-modal class="w-full rounded-xl bg-gray-100 px-4 py-3">Close</button>'}
         </div>
-    `;
+    </div>`;
     modal.classList.remove('hidden');
-    modal.querySelectorAll('[data-close-application]').forEach((button) => button.addEventListener('click', closeApplicationModal));
-    modal.querySelector('[data-approve-application]')?.addEventListener('click', () => reviewDesignerApplication(applicationId, 'approved'));
-    modal.querySelector('[data-decline-application]')?.addEventListener('click', () => reviewDesignerApplication(applicationId, 'rejected'));
+    modal.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal('applicationModal')));
+    modal.querySelector('[data-accept-application]')?.addEventListener('click', () => reviewApplication(id, 'approved'));
+    modal.querySelector('[data-deny-application]')?.addEventListener('click', () => reviewApplication(id, 'rejected'));
 }
 
-function closeApplicationModal() {
-    document.getElementById('applicationModal').classList.add('hidden');
-}
-
-async function reviewDesignerApplication(applicationId, status) {
-    const errorElement = document.getElementById('applicationModalError');
-    const reason = document.getElementById('applicationRejectionReason')?.value.trim() || '';
+async function reviewApplication(id, status) {
+    const reason = document.getElementById('application-reason')?.value.trim() || '';
+    const errorElement = document.getElementById('application-error');
+    if (status === 'rejected' && !reason) {
+        errorElement.textContent = 'Add a reason so the applicant knows why the request was denied.';
+        errorElement.classList.remove('hidden');
+        return;
+    }
     try {
-        const { data, error } = await closetxSupabase
-            .from('designer_profiles')
+        const { data, error } = await closetxSupabase.from('profiles')
             .update({
-                application_status: status,
-                application_rejection_reason: status === 'rejected' ? reason : null,
-                is_verified: status === 'approved'
+                designer_status: status,
+                designer_rejection_reason: status === 'rejected' ? reason : null,
+                designer_reviewed_at: new Date().toISOString(),
             })
-            .eq('id', applicationId)
-            .eq('application_status', 'pending')
+            .eq('id', id)
+            .eq('designer_status', 'pending')
             .select('id');
         if (error) throw error;
-        if (!data?.length) throw new Error('This application has already been reviewed or is no longer available.');
-
-        closeApplicationModal();
+        if (!data?.length) throw new Error('This application has already been reviewed.');
+        closeModal('applicationModal');
         await refreshData();
     } catch (error) {
         console.error('Could not review designer application:', error);
         if (errorElement) {
-            errorElement.textContent = `Could not save the review: ${error.message}`;
+            errorElement.textContent = error.message;
             errorElement.classList.remove('hidden');
-        } else {
-            showDashboardError(`Could not save the application decision: ${error.message}`);
-        }
+        } else showDashboardError(`Could not save the application decision: ${error.message}`);
     }
 }
 
-function bindDesignCardActions(container) {
-    container.querySelectorAll('[data-design-id]').forEach((button) => {
-        button.addEventListener('click', () => openApprovalModalById(button.dataset.designId));
-    });
-}
-
-function openApprovalModalById(designId) {
-    const design = allDesigns.find((item) => item.id === designId);
-    if (design) openApprovalModal(design);
-}
-
-// Render Design Card
-function renderDesignCard(design, showLensId = false, showRejection = false) {
-    return `
-        <div class="bg-gray-800 border border-gray-700 rounded-2xl overflow-hidden hover:border-cyan-500 transition transform hover:-translate-y-1">
-            <!-- Images -->
-            <div class="grid grid-cols-2 gap-2 p-4 bg-gray-900">
-                <img src="${safeImageUrl(design.front_image_url)}" alt="Front" class="w-full h-48 object-cover rounded-xl">
-                <img src="${safeImageUrl(design.back_image_url)}" alt="Back" class="w-full h-48 object-cover rounded-xl">
-            </div>
-            
-            <!-- Info -->
-            <div class="p-5">
-                <div class="flex justify-between items-start mb-3">
-                    <div>
-                        <h3 class="text-lg font-bold text-white mb-1">${escapeHtml(design.title)}</h3>
-                        <p class="text-gray-400 text-sm">by ${escapeHtml(design.designer?.brand_name || 'Unknown')}</p>
-                    </div>
-                    <div class="text-xl font-bold text-cyan-500">₱${escapeHtml(Number(design.price || 0).toLocaleString())}</div>
-                </div>
-                
-                ${design.description ? `<p class="text-gray-400 text-sm mb-3 line-clamp-2">${escapeHtml(design.description)}</p>` : ''}
-                
-                <div class="flex items-center gap-2 mb-3 text-gray-500 text-xs">
-                    ${design.category ? `<span class="px-2 py-1 bg-gray-700 rounded-lg">${escapeHtml(design.category)}</span>` : ''}
-                    <span class="flex items-center gap-1">
-                        <i class="fas fa-heart text-red-500"></i>
-                        ${escapeHtml(design.likes_count || 0)}
-                    </span>
-                    <span class="flex items-center gap-1">
-                        <i class="fas fa-calendar"></i>
-                        ${escapeHtml(new Date(design.created_at).toLocaleDateString())}
-                    </span>
-                </div>
-                
-                ${showLensId && design.lens_id ? `
-                    <div class="mb-3 p-2 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
-                        <p class="text-xs text-gray-400">Lens ID:</p>
-                        <p class="text-sm text-cyan-500 font-mono">${escapeHtml(design.lens_id)}</p>
-                    </div>
-                ` : ''}
-                
-                ${showRejection && design.rejection_reason ? `
-                    <div class="mb-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                        <p class="text-xs text-red-500 font-semibold mb-1">Rejection Reason:</p>
-                        <p class="text-xs text-gray-300">${escapeHtml(design.rejection_reason)}</p>
-                    </div>
-                ` : ''}
-                
-                <button type="button" data-design-id="${escapeHtml(design.id)}"
-                    class="w-full rounded-lg border border-slate-200 bg-slate-800 py-2.5 font-semibold text-white transition hover:bg-slate-700">
-                    <i class="fas fa-eye mr-2"></i>
-                    ${design.status === 'pending' ? 'Review Design' : 'View Details'}
-                </button>
-            </div>
+function openDesignReview(id) {
+    const design = allDesigns.find((item) => item.id === id);
+    if (!design) return;
+    const isPending = design.status === 'pending';
+    const modal = document.getElementById('approvalModal');
+    modal.innerHTML = `<div class="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div class="flex items-center justify-between border-b border-gray-200 p-5">
+            <div><h2 class="text-xl font-bold text-gray-900">${escapeHtml(design.title)}</h2><p class="text-sm text-gray-500">by ${escapeHtml(design.designer?.brand_name)}</p></div>
+            <button type="button" data-close-modal class="px-3 py-2 text-gray-500" aria-label="Close">✕</button>
         </div>
-    `;
+        <div class="p-5">
+            <div class="grid grid-cols-2 gap-3"><img src="${safeImageUrl(design.front_image_url)}" alt="Front artwork" class="h-64 w-full rounded-xl object-contain bg-gray-50"><img src="${safeImageUrl(design.back_image_url)}" alt="Back artwork" class="h-64 w-full rounded-xl object-contain bg-gray-50"></div>
+            <div class="mt-4 grid grid-cols-2 gap-3 text-sm"><p><strong>Price:</strong> ₱${escapeHtml(Number(design.price || 0).toLocaleString())}</p><p><strong>Category:</strong> ${escapeHtml(design.category || 'T-Shirts')}</p><p><strong>Colour:</strong> ${escapeHtml(design.shirt_color || '')}</p><p><strong>Submitted:</strong> ${escapeHtml(formatDate(design.created_at))}</p></div>
+            <p class="mt-4 whitespace-pre-wrap text-sm">${escapeHtml(design.description || 'No description provided.')}</p>
+            ${design.rejection_reason ? `<p class="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-800"><strong>Denial reason:</strong> ${escapeHtml(design.rejection_reason)}</p>` : ''}
+            ${isPending ? `<label class="mt-5 block text-sm font-medium">Denial reason (required if denying)<textarea id="design-reason" rows="3" class="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"></textarea></label><p id="design-error" class="hidden mt-3 text-sm text-red-700"></p>` : ''}
+        </div>
+        <div class="flex gap-3 border-t border-gray-200 p-5">
+            ${isPending ? `<button type="button" data-deny-design class="flex-1 rounded-xl bg-red-500 px-4 py-3 font-semibold text-white">Deny design</button><button type="button" data-accept-design class="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white">Accept and publish</button>` : '<button type="button" data-close-modal class="w-full rounded-xl bg-gray-100 px-4 py-3">Close</button>'}
+        </div>
+    </div>`;
+    modal.classList.remove('hidden');
+    modal.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal('approvalModal')));
+    modal.querySelector('[data-accept-design]')?.addEventListener('click', () => reviewDesign(id, 'approved'));
+    modal.querySelector('[data-deny-design]')?.addEventListener('click', () => reviewDesign(id, 'rejected'));
 }
 
-// Render Leaderboard
-function renderLeaderboard() {
-    const container = document.getElementById('leaderboard-content');
-    const sortedDesigns = [...allDesigns]
-        .filter(d => d.status === 'approved')
-        .sort((a, b) => (b.likes_count || 0) - (a.likes_count || 0));
-    
-    if (sortedDesigns.length === 0) {
-        container.innerHTML = `
-            <div class="text-center py-20">
-                <div class="text-6xl mb-4">🏆</div>
-                <h3 class="text-2xl font-bold text-white mb-2">No Designs Yet</h3>
-                <p class="text-gray-400">Leaderboard will appear when designs are approved.</p>
-            </div>
-        `;
+async function reviewDesign(id, status) {
+    const reason = document.getElementById('design-reason')?.value.trim() || '';
+    const errorElement = document.getElementById('design-error');
+    if (status === 'rejected' && !reason) {
+        errorElement.textContent = 'Add a reason so the designer knows what to change.';
+        errorElement.classList.remove('hidden');
         return;
     }
-    
-    const top3 = sortedDesigns.slice(0, 3);
-    const rest = sortedDesigns.slice(3);
-    
-    container.innerHTML = `
-        <div class="mb-8">
-            <h3 class="text-2xl font-bold text-black mb-6">🏆 Top 3 Most Loved</h3>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                ${top3.map((design, index) => `
-                    <div class="bg-gradient-to-br ${getMedalGradient(index)} p-6 rounded-2xl">
-                        <div class="flex items-center gap-4 mb-4">
-                            <div class="text-5xl">${getMedalEmoji(index)}</div>
-                            <div class="text-white">
-                                <h4 class="text-2xl font-bold">#${index + 1}</h4>
-                                <p class="text-sm opacity-80">Rank</p>
-                            </div>
-                        </div>
-                        <img src="${safeImageUrl(design.front_image_url)}" alt="${escapeHtml(design.title)}" class="w-full h-40 object-cover rounded-xl mb-4">
-                        <h4 class="text-white font-bold text-lg mb-1">${escapeHtml(design.title)}</h4>
-                        <p class="text-white/80 text-sm mb-3">${escapeHtml(design.designer?.brand_name || 'Unknown')}</p>
-                        <div class="flex items-center gap-2 text-red-500">
-                            <i class="fas fa-heart text-xl"></i>
-                            <span class="text-2xl font-bold">${escapeHtml(design.likes_count || 0)}</span>
-                        </div>
-                    </div>
-                `).join('')}
-            </div>
-        </div>
-        
-        ${rest.length > 0 ? `
-            <div>
-                <h3 class="text-2xl font-bold text-white mb-6">Other Rankings</h3>
-                <div class="space-y-3">
-                    ${rest.map((design, index) => `
-                        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4 flex items-center gap-4 hover:border-cyan-500 transition">
-                            <div class="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center">
-                                <span class="text-xl font-bold text-cyan-500">#${index + 4}</span>
-                            </div>
-                            <img src="${safeImageUrl(design.front_image_url)}" alt="${escapeHtml(design.title)}" class="w-16 h-16 object-cover rounded-lg">
-                            <div class="flex-1">
-                                <h4 class="text-white font-semibold">${escapeHtml(design.title)}</h4>
-                                <p class="text-gray-400 text-sm">${escapeHtml(design.designer?.brand_name || 'Unknown')}</p>
-                            </div>
-                            <div class="text-right">
-                                <div class="flex items-center gap-2 text-white">
-                                    <i class="fas fa-heart text-red-500"></i>
-                                    <span class="text-xl font-bold">${escapeHtml(design.likes_count || 0)}</span>
-                                </div>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        ` : ''}
-    `;
-}
-
-// Get Medal Emoji
-function getMedalEmoji(index) {
-    const medals = ['🥇', '🥈', '🥉'];
-    return medals[index] || '';
-}
-
-// Get Medal Gradient
-function getMedalGradient(index) {
-    const gradients = [
-        'from-yellow-600 to-yellow-400',
-        'from-gray-400 to-gray-300',
-        'from-orange-600 to-orange-400'
-    ];
-    return gradients[index] || 'from-gray-700 to-gray-600';
-}
-
-// Render Designers
-function renderFeedback() {
-    const container = document.getElementById('feedback-list');
-    if (!allFeedback.length) {
-        container.innerHTML = '<div class="empty-state"><span class="empty-state-icon"><i class="far fa-comment-dots"></i></span><h3>No feedback yet</h3><p>Customer ratings and comments on approved designs will appear here.</p></div>';
-        return;
+    try {
+        const { data, error } = await closetxSupabase.from('designs')
+            .update({
+                review_status: status,
+                rejection_reason: status === 'rejected' ? reason : null,
+                reviewed_at: new Date().toISOString(),
+                is_published: status === 'approved',
+            })
+            .eq('id', id)
+            .eq('review_status', 'pending')
+            .select('id');
+        if (error) throw error;
+        if (!data?.length) throw new Error('This design has already been reviewed.');
+        closeModal('approvalModal');
+        await refreshData();
+    } catch (error) {
+        console.error('Could not review design:', error);
+        if (errorElement) {
+            errorElement.textContent = error.message;
+            errorElement.classList.remove('hidden');
+        } else showDashboardError(`Could not save the design decision: ${error.message}`);
     }
-
-    const sorted = [...allFeedback].sort((a, b) => {
-        if (feedbackSort === 'highest') return Number(b.rating || 0) - Number(a.rating || 0);
-        if (feedbackSort === 'lowest') return Number(a.rating || 0) - Number(b.rating || 0);
-        return new Date(b.created_at) - new Date(a.created_at);
-    });
-
-    container.innerHTML = `
-        <table class="admin-table feedback-table">
-            <thead><tr><th>Rating</th><th>Reviewer</th><th>Feedback</th><th>Target design</th><th>Submitted</th></tr></thead>
-            <tbody>${sorted.map((feedback) => {
-        const rating = Number(feedback.rating);
-        const hasRating = Number.isFinite(rating) && rating >= 1 && rating <= 5;
-        const author = feedback.author?.full_name || feedback.author?.email || 'ClosetX customer';
-        return `
-            <tr data-searchable>
-                <td>${hasRating ? `<span class="rating-value" aria-label="${rating} out of 5">${rating.toFixed(1)} <span>★</span></span>` : '<span class="text-gray-400">No rating</span>'}</td>
-                <td><strong>${escapeHtml(author)}</strong></td>
-                <td class="feedback-message">${escapeHtml(feedback.comment_text || 'Rating only; no written comment.')}</td>
-                <td>${escapeHtml(feedback.design?.title || 'Design no longer available')}</td>
-                <td>${escapeHtml(new Date(feedback.created_at).toLocaleDateString())}</td>
-            </tr>
-        `;
-            }).join('')}</tbody>
-        </table>
-    `;
-    applyCurrentSearch();
 }
 
 function renderDesigners() {
-    const container = document.getElementById('designers-grid');
-    const verifiedDesigners = allDesigners.filter((designer) => designer.application_status === 'approved' && designer.is_verified);
-    
-    if (verifiedDesigners.length === 0) {
-        container.innerHTML = '<div class="empty-state"><span class="empty-state-icon"><i class="fas fa-users"></i></span><h3>No approved designers</h3><p>Accepted designer applications will be listed here.</p></div>';
-        return;
-    }
-    
-    container.innerHTML = `<table class="admin-table">
-        <thead><tr><th>Designer</th><th>Location</th><th>Design requests</th><th>Approved assets</th><th>Joined</th></tr></thead>
-        <tbody>${verifiedDesigners.map(designer => {
-        const designCount = allDesigns.filter(d => d.designer_id === designer.user_id).length;
-        const approvedCount = allDesigns.filter(d => d.designer_id === designer.user_id && d.status === 'approved').length;
-        return `
-            <tr data-searchable>
-                <td><div class="table-identity"><div class="table-avatar">${designer.profile_image_url ? `<img src="${safeImageUrl(designer.profile_image_url)}" alt="">` : escapeHtml((designer.brand_name || 'UN').slice(0, 2).toUpperCase())}</div><div><strong>${escapeHtml(designer.brand_name || 'Unnamed designer')}</strong><small>${escapeHtml(designer.profile?.email || '')}</small></div></div></td>
-                <td>${escapeHtml(designer.location || '—')}</td>
-                <td>${designCount}</td><td>${approvedCount}</td><td>${escapeHtml(new Date(designer.created_at).toLocaleDateString())}</td>
-            </tr>
-        `;
-        }).join('')}</tbody></table>`;
-    applyCurrentSearch();
+    const designers = allDesigners.filter((designer) => designer.application_status === 'approved');
+    document.getElementById('designers-grid').innerHTML = designers.length ? `
+        <table class="admin-table">
+            <thead><tr><th>Designer</th><th>Email</th><th>Brand</th><th>Location</th><th>Joined</th></tr></thead>
+            <tbody>${designers.map((designer) => `<tr data-searchable>
+                <td><strong>${escapeHtml(designer.full_name || 'Designer')}</strong></td><td>${escapeHtml(designer.email)}</td>
+                <td>${escapeHtml(designer.brand_name || 'Not created yet')}</td><td>${escapeHtml(designer.location || '—')}</td>
+                <td>${escapeHtml(formatDate(designer.created_at))}</td>
+            </tr>`).join('')}</tbody>
+        </table>` : '<div class="empty-state"><h3>No accepted designers yet</h3><p>Accepted designer accounts will appear here.</p></div>';
 }
 
-// Refresh Data
+function renderFeedback() {
+    const feedback = [...allFeedback].sort((a, b) => {
+        if (feedbackSort === 'highest') return (b.rating || 0) - (a.rating || 0);
+        if (feedbackSort === 'lowest') return (a.rating || 0) - (b.rating || 0);
+        return new Date(b.created_at) - new Date(a.created_at);
+    });
+    document.getElementById('feedback-list').innerHTML = feedback.length ? `
+        <div class="space-y-3">${feedback.map((item) => `<article data-searchable class="rounded-xl border border-gray-200 bg-white p-5">
+            <div class="flex flex-wrap items-center justify-between gap-2"><strong>${escapeHtml(item.author_name || 'ClosetX shopper')}</strong><span class="text-sm text-gray-500">${escapeHtml(formatDate(item.created_at))}</span></div>
+            ${item.author_email ? `<p class="mt-1 text-sm text-gray-500">${escapeHtml(item.author_email)}</p>` : ''}
+            ${item.rating ? `<p class="mt-2 text-amber-600" aria-label="${escapeHtml(item.rating)} out of 5 stars">${'★'.repeat(item.rating)}${'☆'.repeat(5 - item.rating)}</p>` : ''}
+            <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">${escapeHtml(item.message)}</p>
+        </article>`).join('')}</div>` : '<div class="empty-state"><span class="empty-state-icon"><i class="far fa-comment-dots"></i></span><h3>No feedback yet</h3><p>Feedback submitted from the app will appear here.</p></div>';
+}
+
+function closeModal(id) {
+    document.getElementById(id)?.classList.add('hidden');
+}
+
 async function refreshData() {
-    await loadDashboard();
-    showSection(currentSection);
-}
-
-// Open Approval Modal
-function openApprovalModal(design) {
-    const modal = document.getElementById('approvalModal');
-    const isPending = design.status === 'pending';
-    modal.dataset.designId = design.id;
-    
-    modal.innerHTML = `
-        <div class="p-6 border-b border-gray-700 flex justify-between items-center">
-            <div>
-                <h2 class="text-2xl font-bold text-white">Review Design</h2>
-                <p class="text-gray-400 text-sm">Approve or reject this submission</p>
-            </div>
-            <button type="button" data-modal-close class="text-gray-400 hover:text-white transition">
-                <i class="fas fa-times text-2xl"></i>
-            </button>
-        </div>
-        
-        <div class="p-6 max-h-[calc(90vh-100px)] overflow-y-auto">
-            <!-- Images -->
-            <div class="grid grid-cols-2 gap-4 mb-6">
-                <div>
-                    <img src="${safeImageUrl(design.front_image_url)}" alt="Front" class="w-full h-64 object-cover rounded-xl">
-                    <p class="text-center text-gray-400 text-sm mt-2">Front</p>
-                </div>
-                <div>
-                    <img src="${safeImageUrl(design.back_image_url)}" alt="Back" class="w-full h-64 object-cover rounded-xl">
-                    <p class="text-center text-gray-400 text-sm mt-2">Back</p>
-                </div>
-            </div>
-            
-            <!-- Design Info -->
-            <div class="bg-gray-900 rounded-xl p-5 mb-6 space-y-3">
-                <div class="flex justify-between">
-                    <span class="text-gray-400">Title:</span>
-                    <span class="text-white font-semibold">${escapeHtml(design.title)}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-400">Designer:</span>
-                    <span class="text-white font-semibold">${escapeHtml(design.designer?.brand_name || 'Unknown')}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-400">Price:</span>
-                    <span class="text-cyan-500 font-bold">₱${escapeHtml(Number(design.price || 0).toFixed(2))}</span>
-                </div>
-                ${design.category ? `
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Category:</span>
-                        <span class="text-white">${escapeHtml(design.category)}</span>
-                    </div>
-                ` : ''}
-                ${design.description ? `
-                    <div>
-                        <span class="text-gray-400 block mb-1">Description:</span>
-                        <span class="text-white">${escapeHtml(design.description)}</span>
-                    </div>
-                ` : ''}
-                <div class="flex justify-between">
-                    <span class="text-gray-400">Likes:</span>
-                    <span class="text-white">❤️ ${escapeHtml(design.likes_count || 0)}</span>
-                </div>
-            </div>
-            
-            <!-- Designer Info -->
-            <div class="bg-gray-900 rounded-xl p-5 mb-6">
-                <h3 class="text-lg font-bold text-white mb-4">Designer Information</h3>
-                <div class="flex items-center gap-4">
-                    <div class="w-16 h-16 rounded-full bg-gray-700 flex items-center justify-center text-xl font-bold overflow-hidden">
-                        ${design.designer?.profile_image_url 
-                            ? `<img src="${safeImageUrl(design.designer.profile_image_url)}" alt="" class="w-full h-full object-cover">`
-                            : escapeHtml((design.designer?.brand_name || 'UN').substring(0, 2).toUpperCase())
-                        }
-                    </div>
-                    <div>
-                        <h4 class="text-white font-semibold">${escapeHtml(design.designer?.brand_name || 'Unknown')}</h4>
-                        ${design.designer?.location ? `<p class="text-gray-400 text-sm">📍 ${escapeHtml(design.designer.location)}</p>` : ''}
-                        ${design.designer?.bio ? `<p class="text-gray-400 text-sm mt-1">${escapeHtml(design.designer.bio)}</p>` : ''}
-                    </div>
-                </div>
-            </div>
-            
-            ${isPending ? `
-                <!-- Approval Section -->
-                <div class="bg-gray-900 rounded-xl p-5 mb-4">
-                    <h3 class="text-lg font-bold text-white mb-4">✅ Approve Design</h3>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-gray-300 text-sm font-medium mb-2">Snap Lens ID *</label>
-                            <input
-                                type="text"
-                                id="lensId"
-                                required
-                                value="${escapeHtml(design.lens_id || '')}"
-                                placeholder="Enter Snap Lens ID"
-                                class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
-                            >
-                            <p class="text-gray-500 text-xs mt-1">Enter the Lens ID from Snap Lens Studio</p>
-                        </div>
-                        <div>
-                            <label class="block text-gray-300 text-sm font-medium mb-2">Lens Group ID *</label>
-                            <input
-                                type="text"
-                                id="lensGroupId"
-                                required
-                                value="${escapeHtml(design.lens_group_id || '')}"
-                                placeholder="Enter Snap Lens Group ID"
-                                class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
-                            >
-                            <p class="text-gray-500 text-xs mt-1">Use the Lens Group ID paired with this design.</p>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Rejection Section -->
-                <div class="bg-gray-900 rounded-xl p-5 mb-6">
-                    <h3 class="text-lg font-bold text-white mb-4">❌ Or Reject Design</h3>
-                    <div>
-                        <label class="block text-gray-300 text-sm font-medium mb-2">Rejection Reason *</label>
-                        <textarea 
-                            id="rejectionReason" 
-                            rows="4"
-                            placeholder="Explain why this design is being rejected..."
-                            class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-red-500 resize-none"
-                        ></textarea>
-                    </div>
-                </div>
-            ` : ''}
-            
-            ${design.status === 'approved' ? `
-                <div class="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-4 mb-6 flex items-center gap-3">
-                    <i class="fas fa-check-circle text-2xl text-cyan-500"></i>
-                    <div>
-                        <strong class="text-cyan-500 block">Design Approved ✅</strong>
-                        <p class="text-gray-300 text-sm">Lens ID: ${escapeHtml(design.lens_id || 'Not set')}</p>
-                        <p class="text-gray-300 text-sm">Group ID: ${escapeHtml(design.lens_group_id || 'Not set')}</p>
-                    </div>
-                </div>
-            ` : ''}
-            
-            ${design.status === 'rejected' && design.rejection_reason ? `
-                <div class="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-6 flex items-center gap-3">
-                    <i class="fas fa-times-circle text-2xl text-red-500"></i>
-                    <div>
-                        <strong class="text-red-500 block">Design Rejected ❌</strong>
-                        <p class="text-gray-300 text-sm">${escapeHtml(design.rejection_reason)}</p>
-                    </div>
-                </div>
-            ` : ''}
-            
-            <div id="modalError" class="hidden mb-4 bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-center gap-3">
-                <span class="text-xl">⚠️</span>
-                <span id="modalErrorMessage" class="text-red-500 text-sm"></span>
-            </div>
-        </div>
-        
-        <div class="p-6 border-t border-gray-700 flex gap-3">
-            ${isPending ? `
-                <button type="button" data-action="reject"
-                    class="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2">
-                    <i class="fas fa-times-circle"></i>
-                    <span>Reject</span>
-                </button>
-                <button type="button" data-action="approve"
-                    class="flex-1 py-3 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2">
-                    <i class="fas fa-check-circle"></i>
-                    <span>Approve</span>
-                </button>
-            ` : `
-                <button type="button" data-modal-close
-                    class="flex-1 py-3 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-xl transition">
-                    Close
-                </button>
-            `}
-        </div>
-    `;
-    
-    modal.classList.remove('hidden');
-    modal.querySelector('[data-modal-close]')?.addEventListener('click', closeApprovalModal);
-    modal.querySelector('[data-action="approve"]')?.addEventListener('click', () => approveDesign(design.id));
-    modal.querySelector('[data-action="reject"]')?.addEventListener('click', () => rejectDesign(design.id));
-}
-
-// Close Approval Modal
-function closeApprovalModal() {
-    document.getElementById('approvalModal').classList.add('hidden');
-}
-
-// Approve Design
-async function approveDesign(designId) {
-    const lensId = document.getElementById('lensId').value.trim();
-    const lensGroupId = document.getElementById('lensGroupId').value.trim();
-    const errorDiv = document.getElementById('modalError');
-    const errorMessage = document.getElementById('modalErrorMessage');
-    
-    if (!lensId || !lensGroupId) {
-        errorMessage.textContent = 'Please enter both the Lens ID and Lens Group ID.';
-        errorDiv.classList.remove('hidden');
-        return;
-    }
-    
+    const button = document.querySelector('.refresh-button');
+    if (button) button.disabled = true;
     try {
-        const { data, error } = await closetxSupabase
-            .from('designs')
-            .update({
-                status: 'approved',
-                lens_id: lensId,
-                lens_group_id: lensGroupId,
-                rejection_reason: null,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', designId)
-            .eq('status', 'pending')
-            .select('id');
-        
-        if (error) throw error;
-        if (!data?.length) throw new Error('This design is no longer pending or could not be updated.');
-        
-        closeApprovalModal();
-        await refreshData();
-        
-    } catch (error) {
-        errorMessage.textContent = error.message;
-        errorDiv.classList.remove('hidden');
-    }
-}
-
-// Reject Design
-async function rejectDesign(designId) {
-    const rejectionReason = document.getElementById('rejectionReason').value.trim();
-    const errorDiv = document.getElementById('modalError');
-    const errorMessage = document.getElementById('modalErrorMessage');
-    
-    if (!rejectionReason) {
-        errorMessage.textContent = 'Please provide a rejection reason';
-        errorDiv.classList.remove('hidden');
-        return;
-    }
-    
-    try {
-        const { data, error } = await closetxSupabase
-            .from('designs')
-            .update({
-                status: 'rejected',
-                rejection_reason: rejectionReason,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', designId)
-            .eq('status', 'pending')
-            .select('id');
-        
-        if (error) throw error;
-        if (!data?.length) throw new Error('This design is no longer pending or could not be updated.');
-        
-        closeApprovalModal();
-        await refreshData();
-        
-    } catch (error) {
-        errorMessage.textContent = error.message;
-        errorDiv.classList.remove('hidden');
+        await loadDashboard();
+    } finally {
+        if (button) button.disabled = false;
     }
 }

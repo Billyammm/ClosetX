@@ -1,7 +1,24 @@
-const SUPABASE_URL = 'https://pdeywqyobsefgwycevwf.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkZXl3cXlvYnNlZmd3eWNldndmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNDI0MzQsImV4cCI6MjA5MjYxODQzNH0.1Vxf7-2uZpqEpZn71s6eZknli58rgAzcGwhc_MSFhqI';
+let closetxSupabase;
 
-const closetxSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const closetxSupabaseReady = (async () => {
+    let response = await fetch('../supabase.env.json', { cache: 'no-store' });
+    if (response.status === 404) {
+        response = await fetch('/api/config', { cache: 'no-store' });
+    }
+    if (!response.ok) {
+        throw new Error('Could not load the ClosetX Supabase configuration. Check the dashboard setup and deployment environment variables.');
+    }
+
+    const config = await response.json();
+    const url = config.SUPABASE_URL?.trim();
+    const anonKey = config.SUPABASE_ANON_KEY?.trim();
+    if (!url || !anonKey || url.includes('YOUR_PROJECT_REF') || anonKey.includes('PASTE_YOUR')) {
+        throw new Error('Set SUPABASE_URL and SUPABASE_ANON_KEY in the project root supabase.env.json.');
+    }
+
+    closetxSupabase = window.supabase.createClient(url, anonKey);
+    return closetxSupabase;
+})();
 
 async function isClosetXAdmin() {
     const { data, error } = await closetxSupabase.rpc('is_closetx_admin');

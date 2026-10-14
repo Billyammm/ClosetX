@@ -1,100 +1,134 @@
 # ClosetX
 
-ClosetX is a Flutter app concept for an AR fashion platform. Designers submit
-shirt designs with 3D garment models, admins review submissions, and consumers
-can browse approved designs and use a phone camera for virtual try-on. The
-current UI is still a prototype; live authentication, database-backed
-workflows, and camera-based AR are not implemented yet.
+ClosetX is a Flutter fashion app for local designers. Shoppers browse
+published T-shirt designs, view them on a 3D shirt, and try them on with their
+camera. Designers sign in, create their brand, and upload front and back
+artwork for each shirt.
 
 ## Run the app
 
-1. Install the Flutter SDK and the Android or iOS development tools.
+1. Install the Flutter SDK.
 2. From the project directory, run `flutter pub get`.
-3. Connect a device or start an emulator, then run `flutter run`.
+3. Run the web build (3D view and camera try-on run in the browser):
 
-Use `flutter test` to run the widget tests and `flutter analyze` to check the
-project.
+```powershell
+flutter run -d chrome --dart-define-from-file=supabase.env.json
+```
+
+For an Android emulator or device, pass the same Supabase configuration:
+
+```powershell
+flutter run -d <device-id> --dart-define-from-file=supabase.env.json
+```
+
+In VS Code, select **ClosetX (Supabase)** from Run and Debug to launch with
+the project configuration.
+
+To use a Chromium browser other than Chrome (for example Brave), set
+`CHROME_EXECUTABLE` to its `.exe` first.
+
+Use `flutter test` to run the tests and `flutter analyze` to check the project.
 
 ## Supabase setup
 
-The app can initialize the Supabase client using local Dart defines. Copy
-`supabase.env.json.example` to `supabase.env.json`, replace the placeholder with
-the project's publishable key or legacy `anon` key, then run:
+1. Copy `supabase.env.json.example` to `supabase.env.json` and fill in the
+   project URL and the publishable or legacy `anon` key. The file is ignored by
+   Git. Never put a `service_role` secret in the app.
+2. In **Authentication → URL Configuration**, add the URL you run the web app
+   on (for example `http://localhost:5000`) to the redirect URLs so email
+   confirmation links return to the app. For quick local testing you can turn
+   off **Confirm email** instead.
+3. In **Authentication → Users**, set this account's **App metadata** to
+   `{"closetx_admin": true}` for each administrator. Admins must sign out and
+   sign back in after changing app metadata.
 
-```powershell
-flutter run --dart-define-from-file=supabase.env.json
-```
+### Database migrations
 
-The local config file is ignored by Git. Never put a Supabase `service_role`
-secret in a mobile app. Without a local key, the app runs its sample-data
-prototype without initializing Supabase.
+If the ClosetX app tables already exist in this Supabase project, do not rerun
+the base schema. In the Supabase SQL Editor, run
+`supabase/migrations/20261007120000_admin_workflows.sql` once. This adds the
+designer and design review fields and policies, and creates the `feedback`
+table. The dashboard uses the existing `profiles`, `brands`, and `designs`
+tables; it does not need a separate admin table.
 
-### Snap Camera Kit
+The dashboard also reads brand logos and design thumbnails. If those columns
+are not in the database yet, first run
+`supabase/migrations/20261006120000_brand_logos_and_thumbnails.sql`.
 
-Enable Camera Kit for the ClosetX organization and Android app in
-[My Lenses](https://my-lenses.snapchat.com/camera-kit), then copy its Android
-API token into the ignored `android/local.properties` file:
+For a completely fresh Supabase project, run these migrations in order:
 
-```properties
-cameraKitApiToken=YOUR_ANDROID_CAMERA_KIT_API_TOKEN
-```
-
-Register the Android app ID `com.example.closetx` in Camera Kit. Rebuild after
-adding the token. The product detail **Try-On with AR** button opens Snap's
-Camera Kit camera with that design's `lens_id` and `lens_group_id`; both
-identifiers must refer to a Lens published to the Camera Kit app. The Lens
-itself must implement the garment/body-tracking effect in Lens Studio. The SDK
-token is supplied through Android app metadata as required by Snap's SDK.
-
-### Existing Supabase schema
-
-The restored project already contains `profiles`, `admins`, `designer_profiles`,
-`designs`, `design_likes`, `design_comments`, `favorites`, and `notifications`.
-Designs store front/back image URLs, review status, and Lens Studio `lens_id`
-and `lens_group_id`. The migration at
-`supabase/migrations/20261005150000_closetx_core.sql` preserves those tables
-and adds safe profile creation on auth signup plus RLS policies for customer,
-designer, and admin access. Admins are identified by membership in `admins`;
-consumer accounts use the existing `guest` role, while sign-up metadata can
-create only guest or designer profiles. Admin accounts cannot be self-assigned.
-
-Back up the restored Supabase project before running the migration. It replaces
-existing RLS policies on its application tables so that the policies match the
-access rules documented in the SQL. Review any custom policies first. The
-migration was applied to the restored ClosetX project on 2026-10-05; run it in
-the Supabase SQL Editor only when setting up another project.
-
-The migration does not create storage buckets: the existing app stores image
-URLs and Lens Studio effect identifiers in `designs`. The approved-design
-catalog reads `front_image_url`, `back_image_url`, `price`, `category`, and
-Lens Studio identifiers. Product details can launch a design's Lens through
-Camera Kit when the Android token and published Lens metadata are configured.
-The Flutter prototype does not yet include sign-in, designer application, or
-design-upload screens.
+1. `supabase/migrations/20261006000000_closetx_schema.sql`
+2. `supabase/migrations/20261006120000_brand_logos_and_thumbnails.sql`
+3. `supabase/migrations/20261007120000_admin_workflows.sql`
 
 ### Admin dashboard
 
-The web dashboard is in `admin-dashboard/` and is deployed separately on
-Vercel. It uses the `is_closetx_admin()` database check for access. Admins can
-review designer applications, review design uploads with per-design Lens and
-Lens Group IDs, view approved designers, and view customer ratings/comments
-from `design_comments`.
+The static dashboard is in `admin-dashboard/`. Serve the ClosetX project root
+over HTTP so the dashboard can load `supabase.env.json` from that root (do not
+open the HTML files directly with `file://` or serve only the `web/` folder).
+Open `http://localhost:<port>/admin-dashboard/` using your local static-file
+server. Sign in with an account marked as an admin above.
 
-Before using the application-review screens, run
-`supabase/migrations/20261005205200_admin_review_workflows.sql` in the
-Supabase SQL Editor. It adds persistent application decisions and decline
-reasons, protects review fields from non-admin updates, and restricts design
-uploads to approved designers. The current Flutter prototype does not yet
-provide designer application or upload forms; application records must exist
-in `designer_profiles` before they can be reviewed in the dashboard.
+For Vercel, set the project root directory to `admin-dashboard` and add
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` as Production environment variables.
+The `/api/config` function exposes only those public client settings to the
+dashboard; never configure a `service_role` key there. Redeploy after changing
+the variables, and add the deployed dashboard URL to Supabase's Authentication
+redirect URLs.
 
-## Current prototype status
+The dashboard manages designer applications, design approvals, accepted
+designers, and feedback submitted from the app's **Profile → Share feedback**
+screen. New designer applications and designs remain unavailable to shoppers
+until approved. Admin access is checked server-side using Supabase RLS and the
+`closetx_admin` app-metadata claim; never use a `service_role` key in the
+dashboard.
 
-When Supabase is configured, the app loads approved designs from the restored
-project. Without the local key, it uses bundled sample garments instead.
-Saved items and bag state are still session-only. Try-on uses Snap Camera Kit
-and each design's published Lens; body tracking and garment rendering are
-provided by that Lens, not implemented by ClosetX itself. Real designer
-uploads and admin moderation remain to be implemented. Sample product imagery
-is loaded from Unsplash and needs an internet connection; placeholder artwork
-is shown if an image cannot be loaded.
+The app only displays published designs fetched from the configured Supabase
+project. It does not bundle fallback/sample products. If the project
+configuration is missing or a catalog request fails, the app shows a
+configuration or connection error instead of displaying stale or sample
+content.
+
+### Accounts
+
+- **Shopper**: browses designs. Signing in is optional.
+- **Designer**: chosen when creating an account. An admin must accept the
+  application before the designer can create a brand and upload designs from
+  **Profile → Designer studio**. Each upload needs front and back artwork
+  (PNG, JPEG or WebP, up to 10 MB), a price, a category and a shirt colour.
+  Designs go to admin review before they can be published; accepted designs
+  can later be hidden or deleted from the studio.
+
+Artwork is stored at `design-images/{user_id}/…`; only the owning designer can
+write to their folder, and anyone can read published images.
+
+## 3D view and camera try-on
+
+`web/tryon/index.html` is a standalone page that the app embeds in an iframe:
+
+- **three.js** loads the rigged shirt `web/tryon/shirt.glb`: `Shirt_Blank`
+  (baked normal and AO maps, shape keys `ChestWide`, `WaistWide`, `SleeveWide`,
+  `Longer`) and an invisible `Body_Occluder` mannequin on the rig `Hips`,
+  `Spine`, `Chest`, `Neck`, `Shoulder/UpperArm/Forearm/Hand .L/.R` and
+  `Hem.F/B/L/R`. Front and back artwork is projected onto the chest and back
+  print areas in the rest pose, so prints follow the cloth. The shirt colour
+  tints the fabric.
+- **MediaPipe Pose Landmarker** (`@mediapipe/tasks-vision`) tracks the body.
+  Its 3D world landmarks are retargeted onto the rig: hips and chest turn and
+  lean in 3D (so turning sideways or around keeps the shirt on), upper arms and
+  forearms aim at the elbows and wrists, and hem bones lag behind for sway. The
+  2D landmarks place and size the shirt on screen; the person mask and the
+  occluder hide whatever should be behind the body. The nose position decides
+  front versus back when MediaPipe mixes up left and right.
+
+The page reads `mode` (`3d` or `camera`), `front`, `back` and `color` from its
+query string. It loads three.js, MediaPipe and the pose model from public
+CDNs, so it needs an internet connection. The camera needs a secure context
+(`localhost` or HTTPS).
+
+The 3D viewer and camera try-on are available in the web build and on Android.
+Android serves the bundled viewer from a local loopback address so WebView can
+load the 3D assets and use the camera; camera try-on prompts for Android camera
+permission. The viewer and pose-tracking libraries load from public CDNs, so
+both features need an internet connection. iOS currently shows a notice
+instead.

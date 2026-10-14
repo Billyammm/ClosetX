@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import '../services/camera_kit_service.dart';
+import '../models/account.dart';
 import '../models/garment.dart';
 import '../state/closet_store.dart';
+import '../state/session_store.dart';
 import '../theme.dart';
 import '../widgets/closet_widgets.dart';
+import '../widgets/tryon_view.dart';
+import 'account_screens.dart';
+import 'tryon_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -81,12 +84,9 @@ class _SearchScreenState extends State<SearchScreen> {
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
               scrollDirection: Axis.horizontal,
               children: [
-                for (final category in const [
+                for (final category in [
                   'All',
-                  'Dresses',
-                  'Tops',
-                  'Sets',
-                  'Bottoms',
+                  ...{for (final garment in store.garments) garment.category},
                 ])
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
@@ -149,21 +149,14 @@ class ProductDetailScreen extends StatefulWidget {
 }
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
-  String _size = 'M';
   int _quantity = 1;
-  final _cameraKitService = CameraKitService();
 
-  Future<void> _launchTryOn(Garment garment) async {
-    try {
-      await _cameraKitService.launchLens(garment);
-    } on PlatformException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.message ?? 'Could not start Camera Kit.'),
-        ),
-      );
-    }
+  void _openTryOn(Garment garment, TryOnMode mode) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TryOnScreen(garment: garment, initialMode: mode),
+      ),
+    );
   }
 
   @override
@@ -208,16 +201,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    garment.designer.toUpperCase(),
+                  BrandTag(
+                    garment: garment,
+                    logoSize: 30,
                     style: const TextStyle(
                       color: accent,
-                      fontSize: 10,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 1.3,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 10),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -255,32 +249,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       height: 1.55,
                     ),
                   ),
-                  if (garment.lensId != null ||
-                      garment.lensGroupId != null) ...[
-                    const SizedBox(height: 16),
-                    _LensStudioMetadata(garment: garment),
-                  ],
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Choose a size',
-                    style: TextStyle(
-                      color: ink,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 9,
-                    children: [
-                      for (final size in const ['XS', 'S', 'M', 'L', 'XL'])
-                        ChoiceChip(
-                          label: Text(size),
-                          selected: _size == size,
-                          onSelected: (_) => setState(() => _size = size),
-                        ),
-                    ],
-                  ),
                   const SizedBox(height: 22),
                   Row(
                     children: [
@@ -316,18 +284,37 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     width: double.infinity,
                     child: FilledButton.icon(
                       onPressed: () {
-                        store.addToCart(garment, _size, quantity: _quantity);
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        store.addToCart(garment, quantity: _quantity);
+                        final navigator = Navigator.of(context);
+                        final messenger = ScaffoldMessenger.of(context);
+                        messenger.showSnackBar(
                           SnackBar(
-                            content: Text('${garment.name} added to your bag'),
-                            action: SnackBarAction(
-                              label: 'VIEW BAG',
-                              onPressed: () => Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => const CartScreen(),
+                            content: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '${garment.name} added to your bag',
+                                  ),
                                 ),
-                              ),
+                                TextButton(
+                                  onPressed: () {
+                                    messenger.hideCurrentSnackBar();
+                                    navigator.push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => const CartScreen(),
+                                      ),
+                                    );
+                                  },
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Theme.of(
+                                      context,
+                                    ).colorScheme.onInverseSurface,
+                                  ),
+                                  child: const Text('VIEW BAG'),
+                                ),
+                              ],
                             ),
+                            duration: const Duration(seconds: 4),
                           ),
                         );
                       },
@@ -341,73 +328,40 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _launchTryOn(garment),
-                      icon: const Icon(Icons.center_focus_strong_rounded),
-                      label: const Text('Try-On with AR'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: ink,
-                        minimumSize: const Size(0, 50),
-                        side: const BorderSide(color: line),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () =>
+                              _openTryOn(garment, TryOnMode.viewer3d),
+                          icon: const Icon(Icons.view_in_ar_outlined),
+                          label: const Text('View in 3D'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: ink,
+                            minimumSize: const Size(0, 50),
+                            side: const BorderSide(color: line),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () =>
+                              _openTryOn(garment, TryOnMode.camera),
+                          icon: const Icon(Icons.center_focus_strong_rounded),
+                          label: const Text('Try on'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: ink,
+                            minimumSize: const Size(0, 50),
+                            side: const BorderSide(color: line),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LensStudioMetadata extends StatelessWidget {
-  const _LensStudioMetadata({required this.garment});
-
-  final Garment garment;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: sage,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'LENS STUDIO ASSET',
-            style: TextStyle(
-              color: accent,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-            ),
-          ),
-          if (garment.lensId != null) ...[
-            const SizedBox(height: 8),
-            SelectableText(
-              'Lens ID: ${garment.lensId}',
-              style: const TextStyle(color: ink, fontSize: 12),
-            ),
-          ],
-          if (garment.lensGroupId != null) ...[
-            const SizedBox(height: 5),
-            SelectableText(
-              'Lens group: ${garment.lensGroupId}',
-              style: const TextStyle(color: ink, fontSize: 12),
-            ),
-          ],
-          const SizedBox(height: 8),
-          const Text(
-            'This design opens its published Lens in Snap Camera Kit.',
-            style: TextStyle(color: muted, fontSize: 11, height: 1.4),
           ),
         ],
       ),
@@ -459,15 +413,7 @@ class CartScreen extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  item.garment.designer.toUpperCase(),
-                                  style: const TextStyle(
-                                    color: muted,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 1,
-                                  ),
-                                ),
+                                BrandTag(garment: item.garment, logoSize: 18),
                                 const SizedBox(height: 5),
                                 Text(
                                   item.garment.name,
@@ -478,14 +424,6 @@ class CartScreen extends StatelessWidget {
                                   ),
                                 ),
                                 const SizedBox(height: 5),
-                                Text(
-                                  'Size ${item.size}',
-                                  style: const TextStyle(
-                                    color: muted,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const SizedBox(height: 3),
                                 Text(
                                   item.garment.formattedPrice,
                                   style: const TextStyle(
@@ -610,166 +548,14 @@ class CartScreen extends StatelessWidget {
   }
 }
 
-class TryOnScreen extends StatelessWidget {
-  const TryOnScreen({required this.garment, super.key});
-
-  final Garment garment;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF24231F),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF24231F),
-        foregroundColor: Colors.white,
-        title: const Text('Preview concept'),
-      ),
-      body: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
-          child: Column(
-            children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      FashionImage(
-                        imageUrl: garment.imageUrl,
-                        background: const Color(0xFF555147),
-                      ),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.black.withValues(alpha: 0.28),
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.55),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const Positioned(
-                        top: 15,
-                        left: 15,
-                        child: _PreviewBadge(),
-                      ),
-                      Positioned(
-                        left: 18,
-                        right: 18,
-                        bottom: 18,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              garment.name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 21,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${garment.designer}  ·  ${garment.formattedPrice}',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 17),
-              const Row(
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    color: Color(0xFFD4B6A8),
-                    size: 18,
-                  ),
-                  SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      'This is a sample look preview. Live camera tracking and virtual fitting are not connected yet.',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                        height: 1.45,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white38),
-                    minimumSize: const Size(0, 50),
-                  ),
-                  child: const Text('Back to the piece'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PreviewBadge extends StatelessWidget {
-  const _PreviewBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.42),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: const Row(
-        children: [
-          Icon(
-            Icons.center_focus_strong_rounded,
-            color: Colors.white,
-            size: 15,
-          ),
-          SizedBox(width: 6),
-          Text(
-            'PREVIEW ONLY',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class ImpactScreen extends StatelessWidget {
-  const ImpactScreen({super.key});
+  const ImpactScreen({super.key, this.showAppBar = false});
+
+  final bool showAppBar;
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
+    final content = ListView(
       padding: const EdgeInsets.fromLTRB(20, 28, 20, 30),
       children: [
         const Text(
@@ -840,6 +626,13 @@ class ImpactScreen extends StatelessWidget {
         ),
       ],
     );
+
+    if (!showAppBar) return content;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Our local edit')),
+      body: content,
+    );
   }
 }
 
@@ -902,6 +695,7 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = ClosetStoreScope.of(context);
+    final session = SessionScope.of(context);
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 28, 20, 30),
       children: [
@@ -917,55 +711,9 @@ class ProfileScreen extends StatelessWidget {
         const SizedBox(height: 8),
         Text('Your style,\nyour way.', style: headingStyle(31)),
         const SizedBox(height: 25),
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: line),
-          ),
-          child: Row(
-            children: [
-              const CircleAvatar(
-                radius: 28,
-                backgroundColor: sage,
-                child: Icon(Icons.person_outline_rounded, color: ink),
-              ),
-              const SizedBox(width: 14),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Welcome to ClosetX',
-                      style: TextStyle(
-                        color: ink,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Your personal style space',
-                      style: TextStyle(color: muted, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'Sign in',
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => LoginScreen(
-                      onContinue: () => Navigator.of(context).pop(),
-                    ),
-                  ),
-                ),
-                icon: const Icon(Icons.login_rounded, color: accent),
-              ),
-            ],
-          ),
-        ),
+        const _AccountCard(),
+        if (session.profile?.isDesigner == true)
+          _DesignerSection(profile: session.profile!),
         const SizedBox(height: 12),
         _ProfileOption(
           icon: Icons.bookmark_border_rounded,
@@ -991,38 +739,26 @@ class ProfileScreen extends StatelessWidget {
           subtitle: 'Meet the makers and materials',
           onTap: () => Navigator.of(
             context,
-          ).push(MaterialPageRoute<void>(builder: (_) => const ImpactScreen())),
+          ).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const ImpactScreen(showAppBar: true),
+            ),
+          ),
         ),
         _ProfileOption(
-          icon: Icons.straighten_rounded,
-          title: 'Size guide',
-          subtitle: 'Find your best fit',
-          onTap: () => _showSizeGuide(context),
+          icon: Icons.chat_bubble_outline_rounded,
+          title: 'Share feedback',
+          subtitle: 'Tell us how ClosetX could be better',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const FeedbackScreen()),
+          ),
         ),
         const SizedBox(height: 15),
         const Text(
-          'Prototype build · Profile and bag data are stored for this session only.',
+          'Saved pieces and your bag are kept for this session only.',
           style: TextStyle(color: muted, fontSize: 11, height: 1.5),
         ),
       ],
-    );
-  }
-
-  void _showSizeGuide(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Size guide'),
-        content: const Text(
-          'Sizes can vary by designer. Check the garment details or contact the maker before ordering.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Got it'),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1063,136 +799,208 @@ class _ProfileOption extends StatelessWidget {
   }
 }
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({required this.onContinue, super.key});
-
-  final VoidCallback onContinue;
-
-  @override
-  State<LoginScreen> createState() => _LoginScreenState();
-}
-
-class _LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _obscurePassword = true;
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
+class _AccountCard extends StatelessWidget {
+  const _AccountCard();
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Sign in')),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const ClosetLogo(),
-                  const SizedBox(height: 24),
-                  Text('Welcome back.', style: headingStyle(29)),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Sign in to keep your favourite local finds together.',
-                    style: TextStyle(color: muted, fontSize: 14, height: 1.5),
-                  ),
-                  const SizedBox(height: 26),
-                  TextFormField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(
-                      labelText: 'Email address',
-                      prefixIcon: Icon(Icons.mail_outline_rounded),
-                    ),
-                    validator: (value) {
-                      final email = value?.trim() ?? '';
-                      if (email.isEmpty) return 'Enter your email address.';
-                      if (!RegExp(
-                        r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                      ).hasMatch(email)) {
-                        return 'Enter a valid email address.';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
-                    textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) => _submit(context),
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      prefixIcon: const Icon(Icons.lock_outline_rounded),
-                      suffixIcon: IconButton(
-                        tooltip: _obscurePassword
-                            ? 'Show password'
-                            : 'Hide password',
-                        onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword,
-                        ),
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                        ),
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Enter your password.';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: () => _submit(context),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: ink,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(0, 52),
-                    ),
-                    child: const Text('Sign in'),
-                  ),
-                  const SizedBox(height: 13),
-                  const Text(
-                    'Account sign-in is not connected in this prototype. You can keep exploring without an account.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: muted, fontSize: 11, height: 1.5),
-                  ),
-                  const SizedBox(height: 10),
-                  TextButton(
-                    onPressed: widget.onContinue,
-                    child: const Text('Continue browsing'),
-                  ),
-                ],
-              ),
+    final session = SessionScope.of(context);
+    final profile = session.profile;
+    final signedIn = session.isSignedIn;
+
+    final String title;
+    final String subtitle;
+    if (!signedIn) {
+      title = 'Welcome to ClosetX';
+      subtitle = 'Sign in to shop or open your brand';
+    } else if (profile == null) {
+      title = session.isLoading ? 'Loading your account…' : 'Signed in';
+      subtitle = session.loadError == null
+          ? ''
+          : 'Could not load your profile. Sign out and in again.';
+    } else {
+      title = profile.displayName;
+      subtitle = profile.isDesigner
+          ? switch (profile.designerStatus) {
+              'approved' =>
+                'Designer${session.brand == null ? '' : ' · ${session.brand!.name}'}',
+              'rejected' => 'Designer application not approved',
+              _ => 'Designer application pending review',
+            }
+          : 'Shopper · ${profile.email}';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: line),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 28,
+            backgroundColor: sage,
+            child: Icon(
+              profile?.isDesigner == true
+                  ? Icons.design_services_outlined
+                  : Icons.person_outline_rounded,
+              color: ink,
             ),
           ),
-        ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: ink,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+                if (subtitle.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(color: muted, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (signedIn)
+            IconButton(
+              tooltip: 'Sign out',
+              onPressed: () => session.signOut(),
+              icon: const Icon(Icons.logout_rounded, color: muted),
+            )
+          else
+            IconButton(
+              tooltip: 'Sign in',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (routeContext) => LoginScreen(
+                    onContinue: () => Navigator.of(routeContext).pop(),
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.login_rounded, color: accent),
+            ),
+        ],
       ),
     );
   }
+}
 
-  void _submit(BuildContext context) {
-    if (!_formKey.currentState!.validate()) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Sign-in is not connected yet. Continue browsing as a guest.',
+class _DesignerSection extends StatelessWidget {
+  const _DesignerSection({required this.profile});
+
+  final UserProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = SessionScope.of(context).brand;
+    if (!profile.isApprovedDesigner) {
+      final rejected = profile.designerStatus == 'rejected';
+      return Container(
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: sage,
+          borderRadius: BorderRadius.circular(18),
         ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              rejected ? 'APPLICATION NOT APPROVED' : 'APPLICATION IN REVIEW',
+              style: const TextStyle(
+                color: accent,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.3,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              rejected
+                  ? 'Thank you for applying.'
+                  : 'We are reviewing your application.',
+              style: headingStyle(20),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              rejected
+                  ? (profile.designerRejectionReason?.trim().isNotEmpty == true
+                        ? profile.designerRejectionReason!
+                        : 'You can contact us if you have questions.')
+                  : 'We will let you know when your designer access is ready.',
+              style: const TextStyle(color: muted, fontSize: 12, height: 1.45),
+            ),
+          ],
+        ),
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: sage,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'DESIGNER STUDIO',
+            style: TextStyle(
+              color: accent,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.3,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            brand == null ? 'Create your brand' : brand.name,
+            style: headingStyle(21),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            brand == null
+                ? 'Set up your label, then upload front and back artwork for each shirt.'
+                : !brand.hasLogo
+                ? 'Add your brand logo so shoppers recognise your shirts.'
+                : brand.location.isEmpty
+                ? 'Upload shirts and manage what shoppers see.'
+                : brand.location,
+            style: const TextStyle(color: muted, fontSize: 12, height: 1.45),
+          ),
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => brand == null
+                    ? const BrandEditorScreen()
+                    : const DesignerStudioScreen(),
+              ),
+            ),
+            style: FilledButton.styleFrom(
+              backgroundColor: ink,
+              foregroundColor: Colors.white,
+            ),
+            icon: Icon(
+              brand == null
+                  ? Icons.storefront_outlined
+                  : Icons.checkroom_outlined,
+            ),
+            label: Text(brand == null ? 'Create brand' : 'Open studio'),
+          ),
+        ],
       ),
     );
   }

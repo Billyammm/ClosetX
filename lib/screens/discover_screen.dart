@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../data/supabase_design_repository.dart';
+import '../data/closetx_repository.dart';
 import '../models/garment.dart';
 import '../state/closet_store.dart';
 import '../supabase/supabase_config.dart';
@@ -17,45 +17,25 @@ class DiscoverScreen extends StatefulWidget {
 
 class _DiscoverScreenState extends State<DiscoverScreen> {
   String _category = 'All';
-  bool _isLoadingDatabase = isSupabaseConfigured;
-  Object? _databaseError;
-  late final SupabaseDesignRepository _designRepository =
-      SupabaseDesignRepository();
+  final _repository = ClosetXRepository();
 
   @override
   void initState() {
     super.initState();
     if (isSupabaseConfigured) {
-      _loadApprovedDesigns();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadDesigns());
     }
   }
 
-  Future<void> _loadApprovedDesigns() async {
-    setState(() {
-      _isLoadingDatabase = true;
-      _databaseError = null;
-    });
-
-    try {
-      final designs = await _designRepository.loadApprovedDesigns();
-      if (!mounted) return;
-      ClosetStoreScope.of(context).replaceGarments(designs);
-      setState(() {
-        _isLoadingDatabase = false;
-        _databaseError = null;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _isLoadingDatabase = false;
-        _databaseError = error;
-      });
-    }
-  }
+  Future<void> _loadDesigns() => ClosetStoreScope.of(
+    context,
+  ).loadCatalog(_repository.loadPublishedDesigns);
 
   @override
   Widget build(BuildContext context) {
     final store = ClosetStoreScope.of(context);
+    final isLoadingDatabase = store.isLoadingCatalog;
+    final databaseError = store.catalogError;
     final allGarments = store.garments;
     final categories = allGarments.map((item) => item.category).toSet().toList()
       ..sort();
@@ -134,7 +114,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
             child: _LocalEditCard(
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const ImpactScreen()),
+                MaterialPageRoute<void>(
+                  builder: (_) => const ImpactScreen(showAppBar: true),
+                ),
               ),
             ),
           ),
@@ -165,10 +147,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text('Curated for you', style: headingStyle(21)),
+                  child: Text('Featured designs', style: headingStyle(21)),
                 ),
                 Text(
-                  _isLoadingDatabase
+                  isLoadingDatabase
                       ? 'Loading...'
                       : '${garments.length} designs',
                   style: const TextStyle(color: muted, fontSize: 12),
@@ -177,27 +159,31 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             ),
           ),
         ),
-        if (_isLoadingDatabase)
+        if (isLoadingDatabase)
           const SliverFillRemaining(
             hasScrollBody: false,
             child: Center(child: CircularProgressIndicator()),
           )
-        else if (_databaseError != null)
+        else if (databaseError != null)
           SliverFillRemaining(
             hasScrollBody: false,
             child: _CatalogError(
-              message: _databaseError.toString(),
-              onRetry: _loadApprovedDesigns,
+              message: databaseError.toString(),
+              onRetry: _loadDesigns,
             ),
+          )
+        else if (!isSupabaseConfigured)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: _SupabaseRequired(),
           )
         else if (garments.isEmpty && isSupabaseConfigured)
           const SliverFillRemaining(
             hasScrollBody: false,
             child: EmptyState(
               icon: Icons.view_in_ar_outlined,
-              title: 'No approved designs yet',
-              message:
-                  'Approved designer submissions will appear here when they are available.',
+              title: 'No designs yet',
+              message: 'Designs published by ClosetX brands will appear here.',
             ),
           )
         else if (garments.isEmpty)
@@ -238,6 +224,43 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => ProductDetailScreen(garment: garment),
+        ),
+      ),
+    );
+  }
+}
+
+class _SupabaseRequired extends StatelessWidget {
+  const _SupabaseRequired();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off_outlined, size: 36, color: accent),
+            SizedBox(height: 12),
+            Text(
+              'Connect to your ClosetX database',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: ink,
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'No sample products are bundled. Launch with '
+              '--dart-define-from-file=supabase.env.json to load published '
+              'designs from your Supabase project.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: muted, fontSize: 12, height: 1.5),
+            ),
+          ],
         ),
       ),
     );

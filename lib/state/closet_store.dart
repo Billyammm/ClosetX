@@ -4,24 +4,16 @@ import '../models/garment.dart';
 
 @immutable
 class CartItem {
-  const CartItem({
-    required this.garment,
-    required this.size,
-    required this.quantity,
-  });
+  const CartItem({required this.garment, required this.quantity});
 
   final Garment garment;
-  final String size;
   final int quantity;
 
-  String get id => '${garment.id}:$size';
+  String get id => garment.id;
   int get lineTotal => garment.price * quantity;
 
-  CartItem copyWith({int? quantity}) => CartItem(
-    garment: garment,
-    size: size,
-    quantity: quantity ?? this.quantity,
-  );
+  CartItem copyWith({int? quantity}) =>
+      CartItem(garment: garment, quantity: quantity ?? this.quantity);
 }
 
 class ClosetStore extends ChangeNotifier {
@@ -31,8 +23,12 @@ class ClosetStore extends ChangeNotifier {
   List<Garment> _garments;
   final Set<String> _savedIds = {};
   final Map<String, CartItem> _cartItems = {};
+  bool _isLoadingCatalog = false;
+  Object? _catalogError;
 
   List<Garment> get garments => List.unmodifiable(_garments);
+  bool get isLoadingCatalog => _isLoadingCatalog;
+  Object? get catalogError => _catalogError;
   Set<String> get savedIds => Set.unmodifiable(_savedIds);
   List<CartItem> get cartItems => List.unmodifiable(_cartItems.values);
   int get cartCount =>
@@ -47,6 +43,21 @@ class ClosetStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> loadCatalog(Future<List<Garment>> Function() load) async {
+    _isLoadingCatalog = true;
+    _catalogError = null;
+    _garments = [];
+    notifyListeners();
+    try {
+      _garments = List.of(await load());
+    } catch (error) {
+      _catalogError = error;
+    } finally {
+      _isLoadingCatalog = false;
+      notifyListeners();
+    }
+  }
+
   bool isSaved(Garment garment) => _savedIds.contains(garment.id);
 
   void toggleSaved(Garment garment) {
@@ -56,8 +67,8 @@ class ClosetStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addToCart(Garment garment, String size, {int quantity = 1}) {
-    final item = CartItem(garment: garment, size: size, quantity: quantity);
+  void addToCart(Garment garment, {int quantity = 1}) {
+    final item = CartItem(garment: garment, quantity: quantity);
     final existing = _cartItems[item.id];
     _cartItems[item.id] = existing == null
         ? item

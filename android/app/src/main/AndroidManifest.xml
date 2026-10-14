@@ -7,10 +7,8 @@
     <application
         android:label="closetx"
         android:name="${applicationName}"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@mipmap/ic_launcher">
-        <meta-data
-            android:name="com.snap.camerakit.api.token"
-            android:value="${cameraKitApiToken}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

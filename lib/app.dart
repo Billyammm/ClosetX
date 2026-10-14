@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'data/garments.dart';
+import 'screens/account_screens.dart';
 import 'screens/closet_screens.dart';
 import 'screens/discover_screen.dart';
 import 'state/closet_store.dart';
-import 'supabase/supabase_config.dart';
+import 'state/session_store.dart';
 import 'theme.dart';
 
 class ClosetXApp extends StatefulWidget {
@@ -15,33 +15,38 @@ class ClosetXApp extends StatefulWidget {
 }
 
 class _ClosetXAppState extends State<ClosetXApp> {
-  late final ClosetStore _store = ClosetStore(garments: sampleGarments);
+  late final ClosetStore _store = ClosetStore(garments: const []);
+  late final SessionStore _session = SessionStore();
 
   @override
   void dispose() {
     _store.dispose();
+    _session.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ClosetStoreScope(
-      store: _store,
-      child: MaterialApp(
-        title: 'ClosetX',
-        debugShowCheckedModeBanner: false,
-        theme: buildClosetTheme(),
-        home: isSupabaseConfigured
-            ? const ClosetShell()
-            : Builder(
-                builder: (context) => LoginScreen(
-                  onContinue: () => Navigator.of(context).pushReplacement(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const ClosetShell(),
+    return SessionScope(
+      store: _session,
+      child: ClosetStoreScope(
+        store: _store,
+        child: MaterialApp(
+          title: 'ClosetX',
+          debugShowCheckedModeBanner: false,
+          theme: buildClosetTheme(),
+          home: _session.isSignedIn
+              ? const ClosetShell()
+              : Builder(
+                  builder: (context) => LoginScreen(
+                    onContinue: () => Navigator.of(context).pushReplacement(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ClosetShell(),
+                      ),
                     ),
                   ),
                 ),
-              ),
+        ),
       ),
     );
   }

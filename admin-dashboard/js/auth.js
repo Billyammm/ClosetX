@@ -40,7 +40,9 @@ const forgotPasswordLink = document.getElementById('forgotPasswordLink');
 const backToLoginBtn = document.getElementById('backToLoginBtn');
 
 if (loginForm) {
-    redirectIfAdminSessionExists();
+    closetxSupabaseReady
+        .then(() => redirectIfAdminSessionExists())
+        .catch((error) => showMessage(error.message || 'Could not connect to ClosetX.'));
 
     loginForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -60,6 +62,7 @@ if (loginForm) {
         loginBtn.disabled = true;
 
         try {
+            await closetxSupabaseReady;
             const { error } = await closetxSupabase.auth.signInWithPassword({
                 email,
                 password,
@@ -98,8 +101,9 @@ if (backToLoginBtn && resetSection && loginForm) {
 }
 
 async function sendResetEmail(email) {
+    await closetxSupabaseReady;
     const { error } = await closetxSupabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/login.html`,
+        redirectTo: `${window.location.origin}${window.location.pathname}`,
     });
     if (error) throw error;
 }

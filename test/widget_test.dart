@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 
 import 'package:closetx/main.dart';
+import 'package:closetx/supabase/supabase_config.dart';
 
 void main() {
   testWidgets('ClosetX showroom and navigation render', (tester) async {
@@ -9,7 +11,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Find your next\nfavourite.'), findsOneWidget);
-    expect(find.text('Curated for you'), findsOneWidget);
+    expect(find.text('Featured designs'), findsOneWidget);
+    if (!isSupabaseConfigured) {
+      await tester.scrollUntilVisible(
+        find.text('Connect to your ClosetX database'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Connect to your ClosetX database'), findsOneWidget);
+    }
     expect(find.text('Discover'), findsOneWidget);
 
     await tester.tap(find.text('Impact'));
