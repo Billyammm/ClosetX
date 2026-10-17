@@ -3,6 +3,7 @@ let allDesigners = [];
 let allFeedback = [];
 let currentSection = 'overview';
 let designFilter = 'pending';
+let designDesignerFilter = 'all';
 let applicationFilter = 'pending';
 let feedbackSort = 'newest';
 let notificationSort = 'all';
@@ -125,6 +126,10 @@ function bindDashboardControls() {
             document.querySelectorAll('[data-design-filter]').forEach((tab) => tab.classList.toggle('active', tab === button));
             renderPendingDesigns();
         });
+    });
+    document.getElementById('design-designer-filter')?.addEventListener('change', (event) => {
+        designDesignerFilter = event.target.value;
+        renderPendingDesigns();
     });
     document.querySelectorAll('[data-application-filter]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -412,24 +417,54 @@ function showSection(section) {
 }
 
 function renderPendingDesigns() {
-    const designs = designFilter === 'all'
+    const designerFilter = document.getElementById('design-designer-filter');
+    const designersWithDesigns = new Map();
+    allDesigns.forEach((design) => {
+        const brandName = design.designer?.brand_name || design.brands?.name || 'ClosetX Designer';
+        const designerName = design.designer?.full_name || design.designer?.email;
+        const label = designerName && designerName !== brandName
+            ? `${brandName} — ${designerName}`
+            : brandName;
+        designersWithDesigns.set(design.designer_id, label);
+    });
+    if (designerFilter) {
+        const availableDesigners = [...designersWithDesigns.entries()]
+            .sort((a, b) => a[1].localeCompare(b[1]));
+        designerFilter.innerHTML = '<option value="all">All designers</option>' + availableDesigners
+            .map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`)
+            .join('');
+        if (designDesignerFilter !== 'all' && designersWithDesigns.has(designDesignerFilter)) {
+            designerFilter.value = designDesignerFilter;
+        } else {
+            designDesignerFilter = 'all';
+            designerFilter.value = 'all';
+        }
+    }
+    const designs = (designFilter === 'all'
         ? allDesigns
-        : allDesigns.filter((design) => design.status === designFilter);
+        : allDesigns.filter((design) => design.status === designFilter))
+        .filter((design) => designDesignerFilter === 'all' || design.designer_id === designDesignerFilter);
     document.getElementById('asset-results-count').textContent = `${designs.length} ${designs.length === 1 ? 'design' : 'designs'}`;
     document.getElementById('pending-designs').innerHTML = designs.length ? `
         <table class="admin-table">
-            <thead><tr><th>Design</th><th>Designer</th><th>Category</th><th>Submitted</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Design</th><th>Designer</th><th>Category</th><th>Submitted</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>${designs.map((design) => `<tr data-searchable>
                 <td><div class="table-identity"><img src="${safeImageUrl(design.thumbnail_url || design.front_image_url)}" alt="" class="table-thumbnail"><div><strong>${escapeHtml(design.title)}</strong><small>₱${escapeHtml(Number(design.price || 0).toLocaleString())}</small></div></div></td>
                 <td>${escapeHtml(design.designer?.brand_name || 'ClosetX Designer')}</td>
                 <td>${escapeHtml(design.category || 'T-Shirts')}</td>
                 <td>${escapeHtml(formatDate(design.created_at))}</td>
                 <td>${statusPill(design.status)}</td>
-                <td><button type="button" data-design-id="${escapeHtml(design.id)}" class="row-action">${design.status === 'pending' ? 'Review' : 'Details'} <i class="fas fa-arrow-right"></i></button></td>
+                <td><div class="row-actions">
+                    <button type="button" data-design-id="${escapeHtml(design.id)}" class="row-action">${design.status === 'pending' ? 'Review' : 'Details'} <i class="fas fa-arrow-right"></i></button>
+                    <button type="button" data-remove-design="${escapeHtml(design.id)}" class="row-action row-action-danger">Remove</button>
+                </div></td>
             </tr>`).join('')}</tbody>
         </table>` : `<div class="empty-state"><span class="empty-state-icon"><i class="far fa-images"></i></span><h3>No matching designs</h3><p>New uploads appear here when designers submit them.</p></div>`;
     document.getElementById('pending-designs').querySelectorAll('[data-design-id]').forEach((button) => {
         button.addEventListener('click', () => openDesignReview(button.dataset.designId));
+    });
+    document.getElementById('pending-designs').querySelectorAll('[data-remove-design]').forEach((button) => {
+        button.addEventListener('click', () => removeDesign(button.dataset.removeDesign, button));
     });
     applyCurrentSearch();
 }
@@ -577,6 +612,34 @@ async function reviewDesign(id, status) {
             errorElement.textContent = error.message;
             errorElement.classList.remove('hidden');
         } else showDashboardError(`Could not save the design decision: ${error.message}`);
+    }
+}
+
+async function removeDesign(id, button) {
+    const design = allDesigns.find((item) => item.id === id);
+    if (!design) return;
+    if (!window.confirm(`Permanently remove "${design.title}"? Its uploaded images will also be deleted. This cannot be undone.`)) return;
+
+    button.disabled = true;
+    button.textContent = 'Removing...';
+    try {
+        const { data, error } = await closetxSupabase.functions.invoke('admin-remove-design', {
+            body: { designId: id },
+        });
+        if (error) throw error;
+        await refreshData();
+        if (data?.warning) {
+            const refreshError = document.getElementById('dashboard-error')?.textContent;
+            showDashboardError([
+                refreshError,
+                `The design was removed, but its uploaded images could not all be cleaned up: ${data.warning}`,
+            ].filter(Boolean).join(' '));
+        }
+    } catch (error) {
+        console.error('Could not remove design:', error);
+        showDashboardError(`Could not remove "${design.title}": ${error.message}`);
+        button.disabled = false;
+        button.textContent = 'Remove';
     }
 }
 

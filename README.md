@@ -83,6 +83,20 @@ until approved. Admin access is checked server-side using Supabase RLS and the
 `closetx_admin` app-metadata claim; never use a `service_role` key in the
 dashboard.
 
+To enable designer account removal, link the Supabase CLI to the project with
+`supabase link --project-ref <project-ref>`, then deploy the
+`admin-remove-designer` Edge Function with
+`supabase functions deploy admin-remove-designer`. It verifies the requesting
+admin, removes the designer's uploaded images, and deletes their Auth account.
+The function uses Supabase's server-side `SUPABASE_SERVICE_ROLE_KEY`; never put
+a service-role key in the dashboard or app. Removing an account permanently
+deletes its profile, brand, and designs as well.
+
+To enable design removal from the approvals dashboard, deploy the
+`admin-remove-design` Edge Function with
+`supabase functions deploy admin-remove-design`. It verifies the requesting
+admin, removes the selected design, and cleans up its uploaded images.
+
 The app only displays published designs fetched from the configured Supabase
 project. It does not bundle fallback/sample products. If the project
 configuration is missing or a catalog request fails, the app shows a
