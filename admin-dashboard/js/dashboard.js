@@ -5,6 +5,7 @@ let currentSection = 'overview';
 let designFilter = 'pending';
 let applicationFilter = 'pending';
 let feedbackSort = 'newest';
+let notificationSort = 'all';
 
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, (character) => ({
@@ -93,14 +94,30 @@ document.addEventListener('DOMContentLoaded', async () => {
 function bindDashboardControls() {
     document.getElementById('global-search')?.addEventListener('input', applyCurrentSearch);
     document.getElementById('notification-button')?.addEventListener('click', () => {
-        const applications = Number(document.getElementById('applications-badge')?.textContent || 0);
-        if (applications) {
-            applicationFilter = 'pending';
-            showSection('applications');
-        } else {
-            designFilter = 'pending';
-            showSection('pending');
+        const panel = document.getElementById('notification-panel');
+        const isHidden = panel?.classList.contains('hidden');
+        document.querySelectorAll('.notification-panel').forEach((box) => box.classList.add('hidden'));
+        if (isHidden) {
+            panel?.classList.remove('hidden');
+            renderNotifications();
         }
+    });
+    document.querySelectorAll('[data-notification-sort]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const sort = button.dataset.notificationSort;
+            if (sort) {
+                notificationSort = sort;
+                document.querySelectorAll('.notification-sort-tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.notificationSort === sort));
+                document.querySelector('.notification-sort-button')?.setAttribute('data-notification-sort', sort);
+                renderNotifications();
+            }
+        });
+    });
+    document.addEventListener('click', (event) => {
+        const panel = document.getElementById('notification-panel');
+        if (!panel) return;
+        const clickedWithin = panel.contains(event.target) || document.getElementById('notification-button')?.contains(event.target);
+        if (!clickedWithin) panel.classList.add('hidden');
     });
     document.querySelectorAll('[data-design-filter]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -255,14 +272,101 @@ function renderStats() {
     `;
     document.getElementById('pending-badge').textContent = stats.pending;
     document.getElementById('applications-badge').textContent = stats.applications;
+    document.getElementById('designers-badge').textContent = stats.designers;
     document.getElementById('feedback-badge').textContent = stats.feedback;
-    document.getElementById('notification-count').textContent = stats.applications + stats.pending;
+    const totalNotifications = stats.applications + stats.pending;
+    document.getElementById('notification-count').textContent = totalNotifications;
     document.getElementById('notification-button').setAttribute(
         'aria-label',
         `${stats.applications} pending designer applications and ${stats.pending} pending designs`,
     );
+
+    const totalDesigns = allDesigns.length;
+    const totalApprovedDesigns = allDesigns.filter((design) => design.status === 'approved').length;
+    const totalRejectedDesigns = allDesigns.filter((design) => design.status === 'rejected').length;
+    const totalApplicants = allDesigners.length;
+    const totalApprovedApplicants = allDesigners.filter((designer) => designer.application_status === 'approved').length;
+    const totalRejectedApplicants = allDesigners.filter((designer) => designer.application_status === 'rejected').length;
+
     document.getElementById('pending-filter-count').textContent = stats.pending;
+    document.getElementById('design-all-filter-count').textContent = totalDesigns;
+    document.getElementById('design-approved-filter-count').textContent = totalApprovedDesigns;
+    document.getElementById('design-rejected-filter-count').textContent = totalRejectedDesigns;
     document.getElementById('application-filter-count').textContent = stats.applications;
+    document.getElementById('application-all-filter-count').textContent = totalApplicants;
+    document.getElementById('application-approved-filter-count').textContent = totalApprovedApplicants;
+    document.getElementById('application-rejected-filter-count').textContent = totalRejectedApplicants;
+    renderNotifications();
+}
+
+function getNotificationItems() {
+    const pendingApplications = allDesigners
+        .filter((designer) => designer.application_status === 'pending')
+        .map((designer) => ({
+            id: designer.id,
+            type: 'application',
+            title: designer.full_name || 'Designer applicant',
+            subtitle: `${designer.brand_name || 'Brand pending'} • ${designer.email}`,
+            created_at: designer.created_at,
+            section: 'applications',
+        }));
+
+    const pendingDesigns = allDesigns
+        .filter((design) => design.status === 'pending')
+        .map((design) => ({
+            id: design.id,
+            type: 'design',
+            title: design.title || 'New design',
+            subtitle: `${design.designer?.brand_name || 'Designer'} • ${design.category || 'T-Shirts'}`,
+            created_at: design.created_at,
+            section: 'pending',
+        }));
+
+    const allItems = [...pendingApplications, ...pendingDesigns]
+        .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    if (notificationSort === 'application') return allItems.filter((item) => item.type === 'application');
+    if (notificationSort === 'design') return allItems.filter((item) => item.type === 'design');
+    return allItems;
+}
+
+function renderNotifications() {
+    const list = document.getElementById('notification-list');
+    if (!list) return;
+
+    const items = getNotificationItems();
+    if (!items.length) {
+        list.innerHTML = '<div class="notification-empty">No pending designer applications or design approvals.</div>';
+        return;
+    }
+
+    list.innerHTML = items.map((item) => `
+        <button type="button" class="notification-item" data-notify-section="${item.section}" data-notify-id="${escapeHtml(item.id)}">
+            <span class="notification-bullet ${item.type}">${item.type === 'application' ? 'A' : 'D'}</span>
+            <span class="notification-content">
+                <span class="notification-title">${escapeHtml(item.title)}</span>
+                <span class="notification-subtitle">${escapeHtml(item.subtitle)}</span>
+            </span>
+            <span class="notification-time">${escapeHtml(formatDate(item.created_at))}</span>
+        </button>
+    `).join('');
+
+    list.querySelectorAll('.notification-item').forEach((button) => {
+        button.addEventListener('click', () => {
+            const section = button.dataset.notifySection;
+            const id = button.dataset.notifyId;
+            if (section === 'applications') {
+                applicationFilter = 'pending';
+                showSection('applications');
+                openApplication(id);
+            } else {
+                designFilter = 'pending';
+                showSection('pending');
+                openDesignReview(id);
+            }
+            document.getElementById('notification-panel')?.classList.add('hidden');
+        });
+    });
 }
 
 function renderRecentActivity() {
@@ -480,13 +584,45 @@ function renderDesigners() {
     const designers = allDesigners.filter((designer) => designer.application_status === 'approved');
     document.getElementById('designers-grid').innerHTML = designers.length ? `
         <table class="admin-table">
-            <thead><tr><th>Designer</th><th>Email</th><th>Brand</th><th>Location</th><th>Joined</th></tr></thead>
+            <thead><tr><th>Designer</th><th>Email</th><th>Brand</th><th>Location</th><th>Joined</th><th>Actions</th></tr></thead>
             <tbody>${designers.map((designer) => `<tr data-searchable>
                 <td><strong>${escapeHtml(designer.full_name || 'Designer')}</strong></td><td>${escapeHtml(designer.email)}</td>
                 <td>${escapeHtml(designer.brand_name || 'Not created yet')}</td><td>${escapeHtml(designer.location || '—')}</td>
                 <td>${escapeHtml(formatDate(designer.created_at))}</td>
+                <td><button type="button" data-remove-designer="${escapeHtml(designer.id)}" class="row-action row-action-danger">Remove account</button></td>
             </tr>`).join('')}</tbody>
         </table>` : '<div class="empty-state"><h3>No accepted designers yet</h3><p>Accepted designer accounts will appear here.</p></div>';
+    document.getElementById('designers-grid').querySelectorAll('[data-remove-designer]').forEach((button) => {
+        button.addEventListener('click', () => removeDesigner(button.dataset.removeDesigner, button));
+    });
+    applyCurrentSearch();
+}
+
+async function removeDesigner(id, button) {
+    const designer = allDesigners.find((item) => item.id === id);
+    if (!designer) return;
+
+    const name = designer.full_name || designer.email || 'this designer';
+    if (!window.confirm(
+        `Permanently remove ${name} (${designer.email})? Their brand, designs, and uploaded images will also be deleted. This cannot be undone.`,
+    )) return;
+
+    button.disabled = true;
+    button.textContent = 'Removing...';
+    try {
+        const { error } = await closetxSupabase.functions.invoke('admin-remove-designer', {
+            body: { designerId: id },
+        });
+        if (error) throw error;
+        allDesigners = allDesigners.filter((item) => item.id !== id);
+        allDesigns = allDesigns.filter((item) => item.designer_id !== id);
+        await refreshData();
+    } catch (error) {
+        console.error('Could not remove designer account:', error);
+        showDashboardError(`Could not remove ${name}'s account: ${error.message}`);
+        button.disabled = false;
+        button.textContent = 'Remove account';
+    }
 }
 
 function renderFeedback() {

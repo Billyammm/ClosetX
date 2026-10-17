@@ -6,6 +6,8 @@
     <title>ClosetX Admin - Login</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="js/theme.js" defer></script>
     <style>
         :root {
             --closetx-ink: #26251f;
@@ -29,6 +31,63 @@
             background: rgb(255 255 255 / 94%);
             border-color: var(--closetx-line);
             box-shadow: 0 24px 60px rgb(38 37 31 / 10%);
+        }
+
+        .theme-toggle {
+            position: fixed;
+            z-index: 20;
+            top: 1.25rem;
+            right: 1.25rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.6rem 0.85rem;
+            border: 1px solid var(--closetx-line);
+            border-radius: 999px;
+            background: rgb(255 255 255 / 90%);
+            color: var(--closetx-ink);
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .theme-toggle:hover {
+            background: #fff;
+        }
+
+        html[data-theme="dark"] {
+            --closetx-ink: #f1f5f9;
+            --closetx-muted: #a5b4c7;
+            --closetx-paper: #0f172a;
+            --closetx-line: #334155;
+            --closetx-accent: #d58b72;
+            color-scheme: dark;
+        }
+
+        html[data-theme="dark"] body {
+            background: var(--closetx-paper);
+            color: var(--closetx-ink);
+        }
+
+        html[data-theme="dark"] .relative.z-10 {
+            background: rgb(30 41 59 / 96%);
+            box-shadow: 0 24px 60px rgb(0 0 0 / 35%);
+        }
+
+        html[data-theme="dark"] .relative.z-10 h1 {
+            color: var(--closetx-ink) !important;
+        }
+
+        html[data-theme="dark"] .theme-toggle {
+            background: #1e293b;
+            color: var(--closetx-ink);
+        }
+
+        html[data-theme="dark"] .theme-toggle:hover {
+            background: #334155;
+        }
+
+        html[data-theme="dark"] .orb {
+            opacity: 0.08;
         }
 
         .text-gray-300,
@@ -116,6 +175,10 @@
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen flex items-center justify-center relative overflow-hidden">
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to dark mode">
+        <i class="theme-toggle-icon fas fa-moon" aria-hidden="true"></i>
+        <span class="theme-toggle-label">Dark mode</span>
+    </button>
     <!-- Animated Background Orbs -->
 <div class="absolute w-96 h-96 bg-red-500 rounded-full orb -top-20 -left-20" style="animation-delay: 0s; background-color: #b46750;"></div>
 <div class="absolute w-[500px] h-[500px] bg-blue-500 rounded-full orb -bottom-40 -right-40" style="animation-delay: 2s; background-color: #e6e9df;"></div>

@@ -7,7 +7,16 @@ let likesChart = null;
 // Chart.js Default Configuration
 Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 Chart.defaults.font.size = 12;
-Chart.defaults.color = '#64748B';
+function chartThemeColor(variable, fallback) {
+    return getComputedStyle(document.documentElement).getPropertyValue(variable).trim() || fallback;
+}
+
+Chart.defaults.color = chartThemeColor('--closetx-muted', '#64748B');
+
+document.addEventListener('closetx-theme-change', () => {
+    Chart.defaults.color = chartThemeColor('--closetx-muted', '#64748B');
+    if (statusChart || timeChart) renderCharts();
+});
 
 // Render All Charts
 function renderCharts() {
@@ -39,7 +48,7 @@ function renderStatusChart() {
                     '#10B981',
                     '#F43F5E'
                 ],
-                borderColor: '#FFFFFF',
+                borderColor: chartThemeColor('--closetx-chart-surface', '#FFFFFF'),
                 borderWidth: 3
             }]
         },
@@ -50,7 +59,7 @@ function renderStatusChart() {
                 legend: {
                     position: 'bottom',
                     labels: {
-                        color: '#334155',
+                        color: chartThemeColor('--closetx-ink', '#334155'),
                         font: {
                             size: 12,
                             weight: '600'
@@ -130,7 +139,7 @@ function renderTimeChart() {
                 fill: true,
                 tension: 0.4,
                 pointBackgroundColor: '#475569',
-                pointBorderColor: '#FFFFFF',
+                pointBorderColor: chartThemeColor('--closetx-chart-surface', '#FFFFFF'),
                 pointBorderWidth: 2,
                 pointRadius: 3,
                 pointHoverRadius: 5
@@ -170,20 +179,20 @@ function renderTimeChart() {
                 y: {
                     beginAtZero: true,
                     ticks: {
-                        color: '#77766E',
+                        color: chartThemeColor('--closetx-muted', '#77766E'),
                         font: {
                             size: 11
                         },
                         stepSize: 1
                     },
                     grid: {
-                        color: '#EAE7DF',
+                        color: chartThemeColor('--closetx-line', '#EAE7DF'),
                         drawBorder: false
                     }
                 },
                 x: {
                     ticks: {
-                        color: '#77766E',
+                        color: chartThemeColor('--closetx-muted', '#77766E'),
                         font: {
                             size: 10
                         },

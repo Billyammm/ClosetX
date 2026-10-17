@@ -9,6 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="./css/custom.css" rel="stylesheet">
+    <script src="js/theme.js" defer></script>
     <script>
         tailwind.config = {
             theme: {
@@ -55,13 +56,14 @@
 
                 <button onclick="showSection('pending')" id="nav-pending" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
                     <i class="fas fa-images"></i>
-                    <span>Asset approvals</span>
+                    <span>Design approvals</span>
                     <span id="pending-badge" class="nav-count">0</span>
                 </button>
                 
                 <button onclick="showSection('designers')" id="nav-designers" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
                     <i class="fas fa-users"></i>
                     <span>Designers</span>
+                    <span id="designers-badge" class="nav-count">0</span>
                 </button>
 
                 <button onclick="showSection('feedback')" id="nav-feedback" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
@@ -95,17 +97,30 @@
                     <kbd>/</kbd>
                 </label>
                 <div class="topbar-actions">
-                    <button id="notification-button" class="icon-button" type="button" aria-label="Open pending reviews">
-                        <i class="far fa-bell"></i><span id="notification-count" class="notification-count">0</span>
+                    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to dark mode">
+                        <i class="theme-toggle-icon fas fa-moon" aria-hidden="true"></i>
+                        <span class="theme-toggle-label">Dark mode</span>
                     </button>
-                    <div class="topbar-admin">
-                        <div id="topbar-avatar" class="admin-avatar">AD</div>
-                        <div>
-                            <p id="topbar-admin-name" class="text-sm font-semibold text-gray-900">Administrator</p>
-                            <p class="text-xs text-gray-500">Admin</p>
+                    <div class="notification-wrapper">
+                        <button id="notification-button" class="icon-button" type="button" aria-label="Open notifications">
+                            <i class="far fa-bell"></i><span id="notification-count" class="notification-count">0</span>
+                        </button>
+                        <div id="notification-panel" class="notification-panel hidden" aria-live="polite">
+                            <div class="notification-header">
+                                <div>
+                                    <p class="notification-label">Notifications</p>
+                                    <h3>Review queue</h3>
+                                </div>
+                                <button type="button" class="notification-sort-button" data-notification-sort="newest">Newest</button>
+                            </div>
+                            <div class="notification-sort-tabs">
+                                <button type="button" class="notification-sort-tab active" data-notification-sort="all">All</button>
+                                <button type="button" class="notification-sort-tab" data-notification-sort="application">Applications</button>
+                                <button type="button" class="notification-sort-tab" data-notification-sort="design">Designs</button>
+                            </div>
+                            <div id="notification-list" class="notification-list"></div>
                         </div>
                     </div>
-                    <button onclick="logout()" class="topbar-signout" type="button">Sign out</button>
                 </div>
             </div>
             <!-- Header -->
@@ -175,9 +190,9 @@
                 <div class="section-toolbar">
                     <div class="filter-tabs" role="tablist" aria-label="Filter asset requests">
                         <button type="button" class="filter-tab active" data-design-filter="pending">Pending <span id="pending-filter-count">0</span></button>
-                        <button type="button" class="filter-tab" data-design-filter="all">All assets</button>
-                        <button type="button" class="filter-tab" data-design-filter="approved">Approved</button>
-                        <button type="button" class="filter-tab" data-design-filter="rejected">Declined</button>
+                        <button type="button" class="filter-tab" data-design-filter="all">All assets <span id="design-all-filter-count">0</span></button>
+                        <button type="button" class="filter-tab" data-design-filter="approved">Approved <span id="design-approved-filter-count">0</span></button>
+                        <button type="button" class="filter-tab" data-design-filter="rejected">Declined <span id="design-rejected-filter-count">0</span></button>
                     </div>
                     <span id="asset-results-count" class="text-sm text-gray-500"></span>
                 </div>
@@ -188,9 +203,9 @@
                 <div class="section-toolbar">
                     <div class="filter-tabs" role="tablist" aria-label="Filter designer applications">
                         <button type="button" class="filter-tab active" data-application-filter="pending">Pending <span id="application-filter-count">0</span></button>
-                        <button type="button" class="filter-tab" data-application-filter="all">All applications</button>
-                        <button type="button" class="filter-tab" data-application-filter="approved">Accepted</button>
-                        <button type="button" class="filter-tab" data-application-filter="rejected">Declined</button>
+                        <button type="button" class="filter-tab" data-application-filter="all">All applications <span id="application-all-filter-count">0</span></button>
+                        <button type="button" class="filter-tab" data-application-filter="approved">Accepted <span id="application-approved-filter-count">0</span></button>
+                        <button type="button" class="filter-tab" data-application-filter="rejected">Declined <span id="application-rejected-filter-count">0</span></button>
                     </div>
                 </div>
                 <div id="applications-list" class="data-table-wrap"></div>
