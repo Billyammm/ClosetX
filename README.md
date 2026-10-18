@@ -46,10 +46,13 @@ Use `flutter test` to run the tests and `flutter analyze` to check the project.
 
 If the ClosetX app tables already exist in this Supabase project, do not rerun
 the base schema. In the Supabase SQL Editor, run
-`supabase/migrations/20261007120000_admin_workflows.sql` once. This adds the
-designer and design review fields and policies, and creates the `feedback`
-table. The dashboard uses the existing `profiles`, `brands`, and `designs`
-tables; it does not need a separate admin table.
+`supabase/migrations/20261007120000_admin_workflows.sql` and then
+`supabase/migrations/20261008120000_shopper_saved_designs.sql` and
+`supabase/migrations/20261009120000_public_design_popularity.sql` once. These
+add the designer and design review workflows, shopper design saves, authorized
+designer/admin save counts, and public aggregate popularity counts for the
+published catalog. The dashboard uses the existing `profiles`, `brands`, and
+`designs` tables; it does not need a separate admin table.
 
 The dashboard also reads brand logos and design thumbnails. If those columns
 are not in the database yet, first run
@@ -60,6 +63,8 @@ For a completely fresh Supabase project, run these migrations in order:
 1. `supabase/migrations/20261006000000_closetx_schema.sql`
 2. `supabase/migrations/20261006120000_brand_logos_and_thumbnails.sql`
 3. `supabase/migrations/20261007120000_admin_workflows.sql`
+4. `supabase/migrations/20261008120000_shopper_saved_designs.sql`
+5. `supabase/migrations/20261009120000_public_design_popularity.sql`
 
 ### Admin dashboard
 
@@ -104,11 +109,11 @@ Keep environment files, Supabase credentials, and service-role keys out of
 commits.
 
 The dashboard manages designer applications, design approvals, accepted
-designers, and feedback submitted from the app's **Profile → Share feedback**
-screen. New designer applications and designs remain unavailable to shoppers
-until approved. Admin access is checked server-side using Supabase RLS and the
-`closetx_admin` app-metadata claim; never use a `service_role` key in the
-dashboard.
+designers, shopper saves by design, and feedback submitted from the app's
+**Profile → Share feedback** screen. New designer applications and designs
+remain unavailable to shoppers until approved. Admin access is checked
+server-side using Supabase RLS and the `closetx_admin` app-metadata claim; never
+use a `service_role` key in the dashboard.
 
 To enable designer account removal, link the Supabase CLI to the project with
 `supabase link --project-ref <project-ref>`, then deploy the
@@ -128,34 +133,37 @@ admin, removes the selected design, and cleans up its uploaded images.
 
 The app confirms when a designer application is submitted. When an admin
 accepts or declines a pending application, the dashboard calls the
-`review-designer-application` Edge Function. It saves the decision and uses
-EmailJS to email the applicant's registered address, including Gmail addresses.
+`review-designer-application` Edge Function, which updates the application and
+sends the decision to the applicant's registered email address using EmailJS.
 
-1. Create an EmailJS email service and a template. Set the template recipient
-   to `{{to_email}}`; the available template variables are `to_name`,
-   `subject`, `application_status`, `message`, and `rejection_reason`. In
-   EmailJS, enable **Allow EmailJS API for non-browser applications** under
-   Account > Security.
-2. Set the EmailJS service ID, template ID, public key, and private key as Edge
-   Function secrets in the linked Supabase project:
+1. In EmailJS, find the service ID under **Email Services**, the public and
+   private keys under **Account**, and the template ID on the template's
+   settings page. The ClosetX application-status template ID is
+   `template_sexryer`.
+2. Make sure the template's recipient field uses `{{to_email}}`. The function
+   provides `to_email`, `to_name`, `subject`, `message`, `designer_name`,
+   `application_status`, and `rejection_reason` as template parameters.
+3. Set the EmailJS values as Edge Function secrets in the linked Supabase
+   project. Replace the example values locally; never paste private keys into
+   chat or commit them:
 
    ```powershell
-   supabase secrets set EMAILJS_SERVICE_ID=service_your_service_id
-   supabase secrets set EMAILJS_TEMPLATE_ID=template_your_template_id
-   supabase secrets set EMAILJS_PUBLIC_KEY=your_emailjs_public_key
-   supabase secrets set EMAILJS_PRIVATE_KEY=your_emailjs_private_key
+   supabase secrets set 'EMAILJS_SERVICE_ID=service_xxxxx' 'EMAILJS_TEMPLATE_ID=template_sexryer' 'EMAILJS_PUBLIC_KEY=your_public_key' 'EMAILJS_PRIVATE_KEY=your_private_key'
    ```
 
-3. Deploy the function:
+4. Remove any Resend secrets if you set them during setup, then deploy the
+   function:
 
    ```powershell
+   supabase secrets unset RESEND_API_KEY RESEND_FROM_EMAIL
    supabase functions deploy review-designer-application
    ```
 
-Keep the EmailJS private key in Supabase secrets; never add it to the Flutter
-app, dashboard, or source control. An admin decision is saved even if EmailJS
-cannot send the message, and the dashboard displays a warning when delivery
-fails.
+EmailJS keys are stored as Supabase secrets and are never embedded in the app
+or dashboard. The Supabase service-role key remains server-side and must never
+be added to the Flutter app, dashboard configuration, or source control. An
+admin decision is saved even if EmailJS cannot send the message; in that case
+the dashboard displays a warning.
 
 The app only displays published designs fetched from the configured Supabase
 project. It does not bundle fallback/sample products. If the project
@@ -165,7 +173,10 @@ content.
 
 ### Accounts
 
-- **Shopper**: browses designs. Signing in is optional.
+- **Shopper**: browses designs as a guest or signed in. A shopper account is
+  required to save designs; designers cannot use their designer account to
+  create shopper saves. Saved designs are private to the shopper, while the
+  design's save count is visible to its designer and admins.
 - **Designer**: chosen when creating an account. An admin must accept the
   application before the designer can create a brand and upload designs from
   **Profile → Designer studio**. Each upload needs front and back artwork

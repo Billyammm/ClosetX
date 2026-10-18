@@ -184,7 +184,16 @@ function applyCurrentSearch() {
 async function loadDashboard() {
     clearDashboardError();
     try {
-        await Promise.all([loadDesigns(), loadDesigners(), loadFeedback()]);
+        const [, , , saveCounts] = await Promise.all([
+            loadDesigns(),
+            loadDesigners(),
+            loadFeedback(),
+            loadDesignSaveCounts(),
+        ]);
+        allDesigns = allDesigns.map((design) => ({
+            ...design,
+            save_count: saveCounts.get(design.id) || 0,
+        }));
         renderStats();
         renderRecentActivity();
         renderCharts();
@@ -193,6 +202,12 @@ async function loadDashboard() {
         console.error('Could not load admin dashboard:', error);
         showDashboardError(`Could not load dashboard data: ${error.message}`);
     }
+}
+
+async function loadDesignSaveCounts() {
+    const { data, error } = await closetxSupabase.rpc('get_design_save_counts');
+    if (error) throw new Error(`Could not load shopper saves: ${error.message}`);
+    return new Map((data || []).map((row) => [row.design_id, Number(row.save_count)]));
 }
 
 async function loadDesigns() {
@@ -264,6 +279,7 @@ function renderStats() {
         applications: allDesigners.filter((designer) => designer.application_status === 'pending').length,
         designers: allDesigners.filter((designer) => designer.application_status === 'approved').length,
         feedback: allFeedback.length,
+        saves: allDesigns.reduce((total, design) => total + (design.save_count || 0), 0),
     };
     document.getElementById('stats-cards').innerHTML = `
         <button type="button" onclick="showSection('applications')" class="metric-card">
@@ -284,6 +300,11 @@ function renderStats() {
         <button type="button" onclick="showSection('feedback')" class="metric-card">
             <span class="metric-icon metric-slate"><i class="fas fa-comment-dots"></i></span>
             <span><strong>${stats.feedback}</strong><small>Customer feedback</small></span>
+            <i class="fas fa-arrow-right metric-arrow"></i>
+        </button>
+        <button type="button" onclick="showSection('favorites')" class="metric-card">
+            <span class="metric-icon metric-slate"><i class="fas fa-bookmark"></i></span>
+            <span><strong>${stats.saves}</strong><small>Shopper saves</small></span>
             <i class="fas fa-arrow-right metric-arrow"></i>
         </button>
     `;
@@ -416,6 +437,7 @@ function showSection(section) {
         applications: ['Designer applications', 'Accept or deny requests to join ClosetX as a designer'],
         designers: ['Designers', 'Accepted designer accounts'],
         feedback: ['Customer feedback', 'Feedback submitted from the ClosetX app'],
+        favorites: ['Shopper saves', 'See how many shoppers saved each design'],
     };
     if (!titles[section]) return;
     document.getElementById('page-title').textContent = titles[section][0];
@@ -425,7 +447,23 @@ function showSection(section) {
     if (section === 'applications') renderApplications();
     if (section === 'designers') renderDesigners();
     if (section === 'feedback') renderFeedback();
+    if (section === 'favorites') renderSavedDesigns();
     applyCurrentSearch();
+}
+
+function renderSavedDesigns() {
+    const designs = [...allDesigns].sort((a, b) => b.save_count - a.save_count);
+    document.getElementById('saved-designs-list').innerHTML = designs.length ? `
+        <table class="admin-table">
+            <thead><tr><th>Design</th><th>Designer</th><th>Category</th><th>Shopper saves</th><th>Submitted</th></tr></thead>
+            <tbody>${designs.map((design) => `<tr data-searchable>
+                <td><div class="table-identity"><img src="${safeImageUrl(design.thumbnail_url || design.front_image_url)}" alt="" class="table-thumbnail"><div><strong>${escapeHtml(design.title)}</strong><small>${escapeHtml(design.status || 'Pending')}</small></div></div></td>
+                <td>${escapeHtml(design.designer?.brand_name || 'ClosetX Designer')}</td>
+                <td>${escapeHtml(design.category || 'T-Shirts')}</td>
+                <td><strong>${design.save_count}</strong></td>
+                <td>${escapeHtml(formatDate(design.created_at))}</td>
+            </tr>`).join('')}</tbody>
+        </table>` : '<div class="empty-state"><h3>No designs to monitor yet</h3><p>Shopper saves will appear here after designs are published.</p></div>';
 }
 
 function renderPendingDesigns() {

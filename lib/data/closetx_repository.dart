@@ -75,10 +75,27 @@ class ClosetXRepository {
         .select(_designColumns)
         .eq('is_published', true)
         .order('created_at', ascending: false);
-    return rows.map(_garmentFromRow).toList(growable: false);
+    final saveCounts = await _client.rpc('get_published_design_save_counts');
+    final saveCountsByDesign = {
+      for (final row in (saveCounts as List).cast<Map<String, dynamic>>())
+        row['design_id'] as String: (row['save_count'] as num).toInt(),
+    };
+    return rows
+        .map(
+          (row) => _garmentFromRow(
+            row,
+            saveCount: saveCountsByDesign[row['id'] as String] ?? 0,
+          ),
+        )
+        .toList(growable: false);
   }
 
   Future<List<DesignerDesign>> loadMyDesigns(String userId) async {
+    final saveCounts = await loadDesignSaveCounts();
+    final saveCountsByDesign = {
+      for (final row in saveCounts)
+        row['design_id'] as String: (row['save_count'] as num).toInt(),
+    };
     final rows = await _client
         .from('designs')
         .select(_designColumns)
@@ -92,6 +109,7 @@ class ClosetXRepository {
             isPublished: row['is_published'] == true,
             reviewStatus: (row['review_status'] as String?) ?? 'approved',
             rejectionReason: row['rejection_reason'] as String?,
+            saveCount: saveCountsByDesign[row['id'] as String] ?? 0,
             imagePaths: [
               row['thumbnail_path'] as String?,
               row['front_image_path'] as String?,
@@ -102,7 +120,39 @@ class ClosetXRepository {
         .toList(growable: false);
   }
 
-  Garment _garmentFromRow(Map<String, dynamic> row) {
+  Future<List<Map<String, dynamic>>> loadDesignSaveCounts() async {
+    final rows = await _client.rpc('get_design_save_counts');
+    return (rows as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<Set<String>> loadSavedDesignIds(String shopperId) async {
+    final rows = await _client
+        .from('saved_designs')
+        .select('design_id')
+        .eq('shopper_id', shopperId);
+    return rows.map((row) => row['design_id'] as String).toSet();
+  }
+
+  Future<void> setDesignSaved({
+    required String shopperId,
+    required String designId,
+    required bool isSaved,
+  }) async {
+    if (isSaved) {
+      await _client.from('saved_designs').insert({
+        'shopper_id': shopperId,
+        'design_id': designId,
+      });
+    } else {
+      await _client
+          .from('saved_designs')
+          .delete()
+          .eq('shopper_id', shopperId)
+          .eq('design_id', designId);
+    }
+  }
+
+  Garment _garmentFromRow(Map<String, dynamic> row, {int saveCount = 0}) {
     final rawPrice = row['price'];
     final price = rawPrice is num
         ? rawPrice.round()
@@ -134,6 +184,7 @@ class ClosetXRepository {
       description:
           _optionalString(row['description']) ??
           'A design from the ClosetX community.',
+      saveCount: saveCount,
     );
   }
 

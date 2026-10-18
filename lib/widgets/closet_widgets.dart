@@ -154,6 +154,39 @@ class GarmentCard extends StatelessWidget {
                 ),
                 Positioned(
                   top: 9,
+                  left: 9,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.94),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.favorite_rounded,
+                          color: accent,
+                          size: 13,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${garment.saveCount}',
+                          style: const TextStyle(
+                            color: ink,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 9,
                   right: 9,
                   child: Material(
                     color: Colors.white.withValues(alpha: 0.94),
@@ -275,27 +308,22 @@ class ClosetLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'closet',
-          style: TextStyle(
-            color: ink,
-            fontSize: 25,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -1.5,
-          ),
+    return const Text.rich(
+      TextSpan(
+        style: TextStyle(
+          color: ink,
+          fontSize: 30,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -1.5,
         ),
-        Text(
-          'X',
-          style: TextStyle(
-            color: accent,
-            fontSize: 25,
-            fontWeight: FontWeight.w300,
+        children: [
+          TextSpan(text: 'closet'),
+          TextSpan(
+            text: 'X',
+            style: TextStyle(color: Color(0xFFCF654B)),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

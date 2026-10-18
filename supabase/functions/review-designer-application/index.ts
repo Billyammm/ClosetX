@@ -46,15 +46,18 @@ Deno.serve(async (request: Request) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  const emailJsServiceId = Deno.env.get('EMAILJS_SERVICE_ID');
+  const emailJsTemplateId = Deno.env.get('EMAILJS_TEMPLATE_ID');
+  const emailJsPublicKey = Deno.env.get('EMAILJS_PUBLIC_KEY');
+  const emailJsPrivateKey = Deno.env.get('EMAILJS_PRIVATE_KEY');
   if (!supabaseUrl || !anonKey) {
     console.error('Required Supabase Edge Function environment variables are missing.');
     return jsonResponse(500, { error: 'Application review is not configured on the server.' });
   }
-
   const token = authorization.slice('Bearer '.length);
   const userClient = createClient(supabaseUrl, anonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
-    global: { headers: { Authorization: `Bearer ${token}` } },
+    global: { headers: { Authorization: 'Bearer ' + token } },
   });
   const { data: { user }, error: authError } = await userClient.auth.getUser(token);
   if (authError || !user) {
@@ -64,12 +67,13 @@ Deno.serve(async (request: Request) => {
     return jsonResponse(403, { error: 'Only a ClosetX administrator can review applications.' });
   }
 
+  const reviewedAt = new Date().toISOString();
   const { data: profile, error: reviewError } = await userClient
     .from('profiles')
     .update({
       designer_status: body.status,
       designer_rejection_reason: body.status === 'rejected' ? reason : null,
-      designer_reviewed_at: new Date().toISOString(),
+      designer_reviewed_at: reviewedAt,
     })
     .eq('id', body.designerId)
     .eq('role', 'designer')
@@ -94,29 +98,22 @@ Deno.serve(async (request: Request) => {
     });
   }
 
-  const emailJsServiceId = Deno.env.get('EMAILJS_SERVICE_ID');
-  const emailJsTemplateId = Deno.env.get('EMAILJS_TEMPLATE_ID');
-  const emailJsPublicKey = Deno.env.get('EMAILJS_PUBLIC_KEY');
-  const emailJsPrivateKey = Deno.env.get('EMAILJS_PRIVATE_KEY');
+  const name = typeof profile.full_name === 'string' && profile.full_name.trim()
+    ? profile.full_name.trim()
+    : 'Designer';
+  const approved = body.status === 'approved';
+  const title = approved ? 'Your designer application was accepted' : 'Your designer application was declined';
+  const message = approved
+    ? 'Your ClosetX designer account is now approved. Sign in to create your brand and upload designs.'
+    : `Your ClosetX designer application was not approved.${reason ? ` Review reason: ${reason}` : ''}`;
   if (!emailJsServiceId || !emailJsTemplateId || !emailJsPublicKey || !emailJsPrivateKey) {
     console.error('EmailJS environment variables are missing.');
     return jsonResponse(200, {
       success: true,
       emailSent: false,
-      warning: 'The application decision was saved, but email notifications are not configured. Set EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, and EMAILJS_PRIVATE_KEY in Supabase secrets.',
+      warning: 'The application decision was saved, but email notifications are not configured. Set the EmailJS service, template, public key, and private key in Supabase secrets.',
     });
   }
-
-  const name = typeof profile.full_name === 'string' && profile.full_name.trim()
-    ? profile.full_name.trim()
-    : 'Designer';
-  const approved = body.status === 'approved';
-  const title = approved
-    ? 'Your designer application was accepted'
-    : 'Your designer application was declined';
-  const message = approved
-    ? 'Your ClosetX designer account is now approved. Sign in to create your brand and upload designs.'
-    : `Your ClosetX designer application was not approved.${reason ? ` Review reason: ${reason}` : ''}`;
 
   try {
     const emailResponse = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
@@ -131,8 +128,9 @@ Deno.serve(async (request: Request) => {
           to_email: recipient,
           to_name: name,
           subject: title,
-          application_status: approved ? 'approved' : 'declined',
           message,
+          designer_name: name,
+          application_status: approved ? 'approved' : 'declined',
           rejection_reason: approved ? '' : reason,
         },
       }),
@@ -143,7 +141,7 @@ Deno.serve(async (request: Request) => {
       return jsonResponse(200, {
         success: true,
         emailSent: false,
-        warning: 'The application decision was saved, but EmailJS could not send the notification. Check the EmailJS service and template configuration.',
+        warning: 'The application decision was saved, but EmailJS could not send the notification. Check the EmailJS service, template, keys, and template parameters.',
       });
     }
   } catch (error) {

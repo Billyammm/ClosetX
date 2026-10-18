@@ -38,6 +38,11 @@ class SessionStore extends ChangeNotifier {
   UserProfile? get profile => _profile;
   Brand? get brand => _brand;
   bool get isDesigner => _profile?.isApprovedDesigner ?? false;
+  bool get isShopper => _profile?.role == AccountRole.shopper;
+
+  Future<void> ensureProfileLoaded() async {
+    if (_userId != null && _profile == null) await refresh();
+  }
 
   Future<void> _syncUser(User? user) async {
     if (user?.id == _userId) return;
@@ -86,6 +91,7 @@ class SessionStore extends ChangeNotifier {
       password: password,
     );
     await _syncUser(response.user);
+    await ensureProfileLoaded();
   }
 
   Future<SignUpOutcome> signUp({
@@ -103,6 +109,7 @@ class SessionStore extends ChangeNotifier {
     );
     if (response.session == null) return SignUpOutcome.confirmEmail;
     await _syncUser(response.user);
+    await ensureProfileLoaded();
     return SignUpOutcome.signedIn;
   }
 

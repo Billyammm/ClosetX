@@ -77,6 +77,7 @@ class DesignerDesign {
     required this.isPublished,
     required this.reviewStatus,
     this.rejectionReason,
+    required this.saveCount,
     required this.imagePaths,
   });
 
@@ -85,5 +86,6 @@ class DesignerDesign {
   final bool isPublished;
   final String reviewStatus;
   final String? rejectionReason;
+  final int saveCount;
   final List<String> imagePaths;
 }

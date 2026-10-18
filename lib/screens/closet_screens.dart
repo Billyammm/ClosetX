@@ -122,7 +122,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       return GarmentCard(
                         garment: garment,
                         isSaved: store.isSaved(garment),
-                        onSave: () => store.toggleSaved(garment),
+                        onSave: () => toggleSavedGarment(context, garment),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
                             builder: (_) =>
@@ -174,7 +174,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             actions: [
               IconButton(
                 tooltip: store.isSaved(garment) ? 'Remove saved item' : 'Save',
-                onPressed: () => store.toggleSaved(garment),
+                onPressed: () => toggleSavedGarment(context, garment),
                 icon: Icon(
                   store.isSaved(garment)
                       ? Icons.bookmark_rounded
@@ -737,9 +737,7 @@ class ProfileScreen extends StatelessWidget {
           icon: Icons.eco_outlined,
           title: 'Our local edit',
           subtitle: 'Meet the makers and materials',
-          onTap: () => Navigator.of(
-            context,
-          ).push(
+          onTap: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (_) => const ImpactScreen(showAppBar: true),
             ),

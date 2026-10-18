@@ -59,6 +59,11 @@
                     <span>Design approvals</span>
                     <span id="pending-badge" class="nav-count">0</span>
                 </button>
+
+                <button onclick="showSection('favorites')" id="nav-favorites" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
+                    <i class="fas fa-bookmark"></i>
+                    <span>Shopper saves</span>
+                </button>
                 
                 <button onclick="showSection('designers')" id="nav-designers" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
                     <i class="fas fa-users"></i>
@@ -147,7 +152,7 @@
             <!-- Overview Section -->
             <div id="overview-section" class="section">
                 <!-- Stats Cards -->
-                <div id="stats-cards" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-7">
+                <div id="stats-cards" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-7">
                     <div class="stat-skeleton"><span></span><i></i></div>
                     <div class="stat-skeleton"><span></span><i></i></div>
                     <div class="stat-skeleton"><span></span><i></i></div>
@@ -212,6 +217,10 @@
                     </div>
                 </div>
                 <div id="pending-designs" class="data-table-wrap"></div>
+            </div>
+
+            <div id="favorites-section" class="section hidden">
+                <div id="saved-designs-list" class="data-table-wrap"></div>
             </div>
 
             <div id="applications-section" class="section hidden">

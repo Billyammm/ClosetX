@@ -11,6 +11,7 @@ class Garment {
     required this.color,
     required this.impact,
     required this.description,
+    this.saveCount = 0,
     this.backImageUrl,
     this.shirtColorHex,
     this.designerLogoUrl,
@@ -22,11 +23,13 @@ class Garment {
   final String designer;
   final int price;
   final String category;
+
   /// Product photo shown in lists and on the detail page.
   final String imageUrl;
   final Color color;
   final String impact;
   final String description;
+  final int saveCount;
   final String? backImageUrl;
 
   /// Fabric colour of the 3D shirt, as `#RRGGBB`.
