@@ -79,6 +79,29 @@ to Supabase's Authentication → URL Configuration → Redirect URLs, and use
 emails return to the deployed dashboard. The login page accepts recovery links
 and lets administrators set a new password.
 
+#### Admin dashboard versioning
+
+The dashboard version is stored in `admin-dashboard/VERSION` using
+`MAJOR.MINOR.PATCH` format and is displayed in its sidebar. Increment the
+version when releasing dashboard changes: use PATCH for compatible fixes,
+MINOR for compatible features, and MAJOR for breaking changes.
+
+Use a feature branch instead of committing directly to `main`. Open a pull
+request so changes can be reviewed and tested in Vercel Preview before merge.
+After merging, Vercel deploys `main` to Production. Tag releases from the
+updated `main` branch:
+
+```powershell
+git switch main
+git pull
+git tag -a admin-dashboard-v1.1.0 -m "Admin dashboard v1.1.0"
+git push origin admin-dashboard-v1.1.0
+```
+
+Replace `1.1.0` with the version recorded in `admin-dashboard/VERSION`.
+Keep environment files, Supabase credentials, and service-role keys out of
+commits.
+
 The dashboard manages designer applications, design approvals, accepted
 designers, and feedback submitted from the app's **Profile → Share feedback**
 screen. New designer applications and designs remain unavailable to shoppers
