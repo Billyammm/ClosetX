@@ -277,6 +277,46 @@
             </form>
         </div>
 
+        <div id="passwordUpdateSection" class="hidden space-y-5">
+            <div class="text-center">
+                <h2 class="text-2xl font-semibold mb-2 text-white">Choose a New Password</h2>
+                <p class="text-gray-400 text-sm">Enter and confirm your new admin password.</p>
+            </div>
+            <form id="passwordUpdateForm" class="space-y-5">
+                <div>
+                    <label for="newPassword" class="block text-gray-300 text-sm font-medium mb-2">New Password</label>
+                    <input
+                        type="password"
+                        id="newPassword"
+                        required
+                        minlength="8"
+                        autocomplete="new-password"
+                        placeholder="At least 8 characters"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition"
+                    >
+                </div>
+                <div>
+                    <label for="confirmNewPassword" class="block text-gray-300 text-sm font-medium mb-2">Confirm New Password</label>
+                    <input
+                        type="password"
+                        id="confirmNewPassword"
+                        required
+                        minlength="8"
+                        autocomplete="new-password"
+                        placeholder="Enter the password again"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition"
+                    >
+                </div>
+                <button
+                    type="submit"
+                    id="updatePasswordBtn"
+                    class="w-full bg-gradient-to-r from-red-500 to-cyan-500 text-white font-semibold py-3 rounded-xl hover:shadow-lg transition"
+                >
+                    Update Password
+                </button>
+            </form>
+        </div>
+
         <!-- Footer -->
         <div class="text-center mt-6 pt-6 border-t border-gray-700">
             <p class="text-gray-500 text-xs">Secure admin access only</p>

@@ -1,4 +1,25 @@
+const recoveryStorageKey = 'closetx_password_recovery_pending';
+const recoveryRedirectUrl = 'https://admin-dashboard-one-alpha-13.vercel.app/login.html';
+let isRecoveryFlow =
+    new URLSearchParams(window.location.hash.slice(1)).get('type') === 'recovery' ||
+    sessionStorage.getItem(recoveryStorageKey) === 'true';
+
+function showPasswordUpdateForm() {
+    isRecoveryFlow = true;
+    sessionStorage.setItem(recoveryStorageKey, 'true');
+    loginForm?.classList.add('hidden');
+    resetSection?.classList.add('hidden');
+    passwordUpdateSection?.classList.remove('hidden');
+    window.history.replaceState(
+        window.history.state,
+        document.title,
+        `${window.location.pathname}${window.location.search}`,
+    );
+}
+
 async function redirectIfAdminSessionExists() {
+    if (isRecoveryFlow) return;
+
     const { data, error } = await closetxSupabase.auth.getSession();
     if (error) {
         showMessage(error.message);
@@ -36,12 +57,33 @@ function showMessage(message, type = 'error') {
 const loginForm = document.getElementById('loginForm');
 const resetSection = document.getElementById('resetSection');
 const resetForm = document.getElementById('resetForm');
+const passwordUpdateSection = document.getElementById('passwordUpdateSection');
+const passwordUpdateForm = document.getElementById('passwordUpdateForm');
 const forgotPasswordLink = document.getElementById('forgotPasswordLink');
 const backToLoginBtn = document.getElementById('backToLoginBtn');
 
 if (loginForm) {
     closetxSupabaseReady
-        .then(() => redirectIfAdminSessionExists())
+        .then(async () => {
+            closetxSupabase.auth.onAuthStateChange((event, session) => {
+                if (event === 'PASSWORD_RECOVERY' && session) {
+                    showPasswordUpdateForm();
+                }
+            });
+
+            if (isRecoveryFlow) {
+                const { data, error } = await closetxSupabase.auth.getSession();
+                if (error) throw error;
+                if (data.session) {
+                    showPasswordUpdateForm();
+                } else {
+                    showMessage('This password reset link is invalid or has expired. Request a new one.');
+                }
+                return;
+            }
+
+            await redirectIfAdminSessionExists();
+        })
         .catch((error) => showMessage(error.message || 'Could not connect to ClosetX.'));
 
     loginForm.addEventListener('submit', async (event) => {
@@ -70,7 +112,7 @@ if (loginForm) {
             if (error) throw error;
 
             if (!(await isClosetXAdmin())) {
-                const { error: signOutError } = await closetxSupabase.auth.signOut();
+                const { error: signOutError } = await closetxSupabase.auth.signOut({ scope: 'global' });
                 if (signOutError) throw signOutError;
                 throw new Error('Access denied. An administrator must grant your account access.');
             }
@@ -103,7 +145,7 @@ if (backToLoginBtn && resetSection && loginForm) {
 async function sendResetEmail(email) {
     await closetxSupabaseReady;
     const { error } = await closetxSupabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}${window.location.pathname}`,
+        redirectTo: recoveryRedirectUrl,
     });
     if (error) throw error;
 }
@@ -130,6 +172,48 @@ if (resetForm) {
             resetBtnText.textContent = 'Send Reset Link';
             resetSpinner.classList.add('hidden');
             resetBtn.disabled = false;
+        }
+    });
+}
+
+if (passwordUpdateForm) {
+    passwordUpdateForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const password = document.getElementById('newPassword').value;
+        const confirmPassword = document.getElementById('confirmNewPassword').value;
+        const updatePasswordBtn = document.getElementById('updatePasswordBtn');
+
+        if (password !== confirmPassword) {
+            showMessage('The passwords do not match.');
+            return;
+        }
+
+        updatePasswordBtn.disabled = true;
+        updatePasswordBtn.textContent = 'Updating password...';
+
+        try {
+            await closetxSupabaseReady;
+            const { error } = await closetxSupabase.auth.updateUser({ password });
+            if (error) throw error;
+
+            const { error: signOutError } = await closetxSupabase.auth.signOut();
+            sessionStorage.removeItem(recoveryStorageKey);
+            isRecoveryFlow = false;
+            passwordUpdateForm.reset();
+            passwordUpdateSection.classList.add('hidden');
+            loginForm.classList.remove('hidden');
+            showMessage(
+                signOutError
+                    ? 'Your password was updated, but the recovery session could not be signed out. Close this tab, then sign in with your new password.'
+                    : 'Your password was updated. You can now sign in with your new password.',
+                signOutError ? 'error' : 'success',
+            );
+        } catch (error) {
+            showMessage(error.message || 'Unable to update your password.');
+        } finally {
+            updatePasswordBtn.disabled = false;
+            updatePasswordBtn.textContent = 'Update Password';
         }
     });
 }

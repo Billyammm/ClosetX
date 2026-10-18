@@ -73,8 +73,11 @@ For Vercel, set the project root directory to `admin-dashboard` and add
 `SUPABASE_URL` and `SUPABASE_ANON_KEY` as Production environment variables.
 The `/api/config` function exposes only those public client settings to the
 dashboard; never configure a `service_role` key there. Redeploy after changing
-the variables, and add the deployed dashboard URL to Supabase's Authentication
-redirect URLs.
+the variables. Add `https://admin-dashboard-one-alpha-13.vercel.app/login.html`
+to Supabase's Authentication → URL Configuration → Redirect URLs, and use
+`https://admin-dashboard-one-alpha-13.vercel.app` as the Site URL so recovery
+emails return to the deployed dashboard. The login page accepts recovery links
+and lets administrators set a new password.
 
 The dashboard manages designer applications, design approvals, accepted
 designers, and feedback submitted from the app's **Profile → Share feedback**
