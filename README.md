@@ -124,6 +124,36 @@ To enable design removal from the approvals dashboard, deploy the
 `supabase functions deploy admin-remove-design`. It verifies the requesting
 admin, removes the selected design, and cleans up its uploaded images.
 
+#### Designer application email notifications
+
+The app confirms when a designer application is submitted. When an admin
+accepts or declines a pending application, the dashboard calls the
+`review-designer-application` Edge Function. It saves the decision and uses
+EmailJS to email the applicant's registered address, including Gmail addresses.
+
+1. Create an EmailJS email service and a template. Set the template recipient
+   to `{{to_email}}`; the available template variables are `to_name`,
+   `subject`, `application_status`, `message`, and `rejection_reason`.
+2. Set the EmailJS service ID, template ID, and public key as Edge Function
+   secrets in the linked Supabase project:
+
+   ```powershell
+   supabase secrets set EMAILJS_SERVICE_ID=service_your_service_id
+   supabase secrets set EMAILJS_TEMPLATE_ID=template_your_template_id
+   supabase secrets set EMAILJS_PUBLIC_KEY=your_emailjs_public_key
+   ```
+
+3. Deploy the function:
+
+   ```powershell
+   supabase functions deploy review-designer-application
+   ```
+
+The EmailJS configuration and Supabase service-role key are only used by the
+Edge Function; never add them to the Flutter app, dashboard, or source control.
+An admin decision is saved even if EmailJS cannot send the message, and the
+dashboard displays a warning when delivery fails.
+
 The app only displays published designs fetched from the configured Supabase
 project. It does not bundle fallback/sample products. If the project
 configuration is missing or a catalog request fails, the app shows a
@@ -137,8 +167,10 @@ content.
   application before the designer can create a brand and upload designs from
   **Profile → Designer studio**. Each upload needs front and back artwork
   (PNG, JPEG or WebP, up to 10 MB), a price, a category and a shirt colour.
-  Designs go to admin review before they can be published; accepted designs
-  can later be hidden or deleted from the studio.
+  The app confirms submission and emails the registered address when an admin
+  accepts or declines the application. Designs go to admin review before they
+  can be published; accepted designs can later be hidden or deleted from the
+  studio.
 
 Artwork is stored at `design-images/{user_id}/…`; only the owning designer can
 write to their folder, and anyone can read published images.

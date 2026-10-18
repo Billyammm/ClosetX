@@ -49,6 +49,18 @@ function clearDashboardError() {
     document.getElementById('dashboard-error')?.classList.add('hidden');
 }
 
+async function edgeFunctionErrorMessage(error) {
+    if (error?.context instanceof Response) {
+        try {
+            const body = await error.context.clone().json();
+            if (typeof body?.error === 'string' && body.error) return body.error;
+        } catch (parseError) {
+            console.warn('Could not read the Edge Function error response:', parseError);
+        }
+    }
+    return error?.message || String(error);
+}
+
 function updateAdminIdentity(session) {
     const email = session?.user?.email || 'Administrator';
     const initials = email.split('@')[0].split(/[._-]/).filter(Boolean).slice(0, 2)
@@ -534,25 +546,26 @@ async function reviewApplication(id, status) {
         return;
     }
     try {
-        const { data, error } = await closetxSupabase.from('profiles')
-            .update({
-                designer_status: status,
-                designer_rejection_reason: status === 'rejected' ? reason : null,
-                designer_reviewed_at: new Date().toISOString(),
-            })
-            .eq('id', id)
-            .eq('designer_status', 'pending')
-            .select('id');
+        const { data, error } = await closetxSupabase.functions.invoke(
+            'review-designer-application',
+            { body: { designerId: id, status, reason } },
+        );
         if (error) throw error;
-        if (!data?.length) throw new Error('This application has already been reviewed.');
+        if (!data?.success) throw new Error(data?.error || 'Could not save the application decision.');
         closeModal('applicationModal');
         await refreshData();
+        if (!data.emailSent) {
+            showDashboardError(
+                data.warning || 'The application decision was saved, but its email notification could not be sent.',
+            );
+        }
     } catch (error) {
         console.error('Could not review designer application:', error);
+        const message = await edgeFunctionErrorMessage(error);
         if (errorElement) {
-            errorElement.textContent = error.message;
+            errorElement.textContent = message;
             errorElement.classList.remove('hidden');
-        } else showDashboardError(`Could not save the application decision: ${error.message}`);
+        } else showDashboardError(`Could not save the application decision: ${message}`);
     }
 }
 

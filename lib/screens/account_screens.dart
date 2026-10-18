@@ -285,6 +285,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final email = _emailController.text.trim();
       final password = _passwordController.text;
       if (_isCreatingAccount) {
+        final isDesignerApplication = _role == AccountRole.designer;
         final outcome = await session.signUp(
           email: email,
           password: password,
@@ -294,11 +295,23 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
         if (outcome == SignUpOutcome.confirmEmail) {
           setState(() => _isCreatingAccount = false);
-          _showMessage(
-            context,
-            'Check $email for a confirmation link, then sign in.',
-          );
+          if (isDesignerApplication) {
+            await _showDesignerApplicationSubmitted(
+              context,
+              email,
+              needsEmailConfirmation: true,
+            );
+          } else {
+            _showMessage(
+              context,
+              'Check $email for a confirmation link, then sign in.',
+            );
+          }
           return;
+        }
+        if (isDesignerApplication) {
+          await _showDesignerApplicationSubmitted(context, email);
+          if (!mounted) return;
         }
       } else {
         await session.signIn(email: email, password: password);
@@ -310,6 +323,33 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) setState(() => _isBusy = false);
     }
   }
+}
+
+Future<void> _showDesignerApplicationSubmitted(
+  BuildContext context,
+  String email, {
+  bool needsEmailConfirmation = false,
+}) async {
+  await showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Application submitted'),
+      content: Text(
+        needsEmailConfirmation
+            ? 'Your designer application is pending review. Confirm your email '
+                  'using the link sent to $email, then sign in. We’ll email you '
+                  'when an admin accepts or declines your application.'
+            : 'Your designer application is pending review. We’ll email $email '
+                  'when an admin accepts or declines your application.',
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Got it'),
+        ),
+      ],
+    ),
+  );
 }
 
 // ---------------------------------------------------------------------------
