@@ -82,9 +82,10 @@ and lets administrators set a new password.
 #### Admin dashboard versioning
 
 The dashboard version is stored in `admin-dashboard/VERSION` using
-`MAJOR.MINOR.PATCH` format and is displayed in its sidebar. Increment the
-version when releasing dashboard changes: use PATCH for compatible fixes,
-MINOR for compatible features, and MAJOR for breaking changes.
+`MAJOR.MINOR.PATCH` format and is displayed on the login page and in the
+dashboard sidebar. Increment the version when releasing dashboard changes:
+use PATCH for compatible fixes, MINOR for compatible features, and MAJOR for
+breaking changes.
 
 Use a feature branch instead of committing directly to `main`. Open a pull
 request so changes can be reviewed and tested in Vercel Preview before merge.

@@ -1,6 +1,9 @@
 async function displayDashboardVersion() {
-    const versionLabel = document.getElementById('dashboard-version');
-    if (!versionLabel) return;
+    const versionLabels = [
+        document.getElementById('dashboard-version'),
+        document.getElementById('login-dashboard-version'),
+    ].filter(Boolean);
+    if (versionLabels.length === 0) return;
 
     try {
         const response = await fetch('VERSION', { cache: 'no-store' });
@@ -13,10 +16,14 @@ async function displayDashboardVersion() {
             throw new Error('The dashboard VERSION file does not contain a valid semantic version.');
         }
 
-        versionLabel.textContent = `v${version}`;
+        versionLabels.forEach((label) => {
+            label.textContent = `v${version}`;
+        });
     } catch (error) {
         console.error('Unable to display dashboard version:', error);
-        versionLabel.textContent = 'Version unavailable';
+        versionLabels.forEach((label) => {
+            label.textContent = 'Version unavailable';
+        });
     }
 }
 
