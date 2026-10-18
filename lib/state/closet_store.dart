@@ -67,6 +67,13 @@ class ClosetStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  void replaceSavedIds(Iterable<String> savedIds) {
+    _savedIds
+      ..clear()
+      ..addAll(savedIds);
+    notifyListeners();
+  }
+
   void addToCart(Garment garment, {int quantity = 1}) {
     final item = CartItem(garment: garment, quantity: quantity);
     final existing = _cartItems[item.id];

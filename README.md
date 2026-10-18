@@ -46,10 +46,13 @@ Use `flutter test` to run the tests and `flutter analyze` to check the project.
 
 If the ClosetX app tables already exist in this Supabase project, do not rerun
 the base schema. In the Supabase SQL Editor, run
-`supabase/migrations/20261007120000_admin_workflows.sql` once. This adds the
-designer and design review fields and policies, and creates the `feedback`
-table. The dashboard uses the existing `profiles`, `brands`, and `designs`
-tables; it does not need a separate admin table.
+`supabase/migrations/20261007120000_admin_workflows.sql` and then
+`supabase/migrations/20261008120000_shopper_saved_designs.sql` and
+`supabase/migrations/20261009120000_public_design_popularity.sql` once. These
+add the designer and design review workflows, shopper design saves, authorized
+designer/admin save counts, and public aggregate popularity counts for the
+published catalog. The dashboard uses the existing `profiles`, `brands`, and
+`designs` tables; it does not need a separate admin table.
 
 The dashboard also reads brand logos and design thumbnails. If those columns
 are not in the database yet, first run
@@ -60,6 +63,8 @@ For a completely fresh Supabase project, run these migrations in order:
 1. `supabase/migrations/20261006000000_closetx_schema.sql`
 2. `supabase/migrations/20261006120000_brand_logos_and_thumbnails.sql`
 3. `supabase/migrations/20261007120000_admin_workflows.sql`
+4. `supabase/migrations/20261008120000_shopper_saved_designs.sql`
+5. `supabase/migrations/20261009120000_public_design_popularity.sql`
 
 ### Admin dashboard
 
@@ -73,18 +78,42 @@ For Vercel, set the project root directory to `admin-dashboard` and add
 `SUPABASE_URL` and `SUPABASE_ANON_KEY` as Production environment variables.
 The `/api/config` function exposes only those public client settings to the
 dashboard; never configure a `service_role` key there. Redeploy after changing
-the variables. Add `https://admin-dashboard-one-alpha-13.vercel.app/login.html`
-to Supabase's Authentication → URL Configuration → Redirect URLs, and use
-`https://admin-dashboard-one-alpha-13.vercel.app` as the Site URL so recovery
-emails return to the deployed dashboard. The login page accepts recovery links
-and lets administrators set a new password.
+the variables. The dashboard returns password-recovery emails to the same
+login URL that requested them. Add the production login URL and any Preview
+login URL you intend to use to Supabase's Authentication → URL Configuration
+→ Redirect URLs, and set the production dashboard URL as the Site URL. The
+login page accepts recovery links and lets administrators set a new password.
+
+#### Admin dashboard versioning
+
+The dashboard version is stored in `admin-dashboard/VERSION` using
+`MAJOR.MINOR.PATCH` format and is displayed on the login page and in the
+dashboard sidebar. Increment the version when releasing dashboard changes:
+use PATCH for compatible fixes, MINOR for compatible features, and MAJOR for
+breaking changes.
+
+Use a feature branch instead of committing directly to `main`. Open a pull
+request so changes can be reviewed and tested in Vercel Preview before merge.
+After merging, Vercel deploys `main` to Production. Tag releases from the
+updated `main` branch:
+
+```powershell
+git switch main
+git pull
+git tag -a admin-dashboard-v1.1.0 -m "Admin dashboard v1.1.0"
+git push origin admin-dashboard-v1.1.0
+```
+
+Replace `1.1.0` with the version recorded in `admin-dashboard/VERSION`.
+Keep environment files, Supabase credentials, and service-role keys out of
+commits.
 
 The dashboard manages designer applications, design approvals, accepted
-designers, and feedback submitted from the app's **Profile → Share feedback**
-screen. New designer applications and designs remain unavailable to shoppers
-until approved. Admin access is checked server-side using Supabase RLS and the
-`closetx_admin` app-metadata claim; never use a `service_role` key in the
-dashboard.
+designers, shopper saves by design, and feedback submitted from the app's
+**Profile → Share feedback** screen. New designer applications and designs
+remain unavailable to shoppers until approved. Admin access is checked
+server-side using Supabase RLS and the `closetx_admin` app-metadata claim; never
+use a `service_role` key in the dashboard.
 
 To enable designer account removal, link the Supabase CLI to the project with
 `supabase link --project-ref <project-ref>`, then deploy the
@@ -100,6 +129,34 @@ To enable design removal from the approvals dashboard, deploy the
 `supabase functions deploy admin-remove-design`. It verifies the requesting
 admin, removes the selected design, and cleans up its uploaded images.
 
+#### Designer application email notifications
+
+The app confirms when a designer application is submitted. When an admin
+accepts or declines a pending application, the dashboard calls the
+`review-designer-application` Edge Function, which updates the application and
+sends the decision to the applicant's registered email address using Resend.
+The notification is delivered to the applicant's email inbox (including Gmail
+addresses); `EMAIL_FROM` is the verified sender address.
+
+1. Verify a sender domain in Resend and create an API key.
+2. Set the Edge Function secrets in the linked Supabase project:
+
+   ```powershell
+   supabase secrets set RESEND_API_KEY=re_your_api_key
+   supabase secrets set "EMAIL_FROM=ClosetX <notifications@your-verified-domain.com>"
+   ```
+
+3. Deploy the function:
+
+   ```powershell
+   supabase functions deploy review-designer-application
+   ```
+
+The Resend API key and Supabase service-role key remain server-side and must
+never be added to the Flutter app, dashboard configuration, or source control.
+If a decision is saved but Resend cannot accept the email, the dashboard
+displays a warning rather than reporting that the notification was sent.
+
 The app only displays published designs fetched from the configured Supabase
 project. It does not bundle fallback/sample products. If the project
 configuration is missing or a catalog request fails, the app shows a
@@ -108,13 +165,18 @@ content.
 
 ### Accounts
 
-- **Shopper**: browses designs. Signing in is optional.
+- **Shopper**: browses designs as a guest or signed in. A shopper account is
+  required to save designs; designers cannot use their designer account to
+  create shopper saves. Saved designs are private to the shopper, while the
+  design's save count is visible to its designer and admins.
 - **Designer**: chosen when creating an account. An admin must accept the
   application before the designer can create a brand and upload designs from
   **Profile → Designer studio**. Each upload needs front and back artwork
   (PNG, JPEG or WebP, up to 10 MB), a price, a category and a shirt colour.
-  Designs go to admin review before they can be published; accepted designs
-  can later be hidden or deleted from the studio.
+  The app confirms submission and emails the registered address when an admin
+  accepts or declines the application. Designs go to admin review before they
+  can be published; accepted designs can later be hidden or deleted from the
+  studio.
 
 Artwork is stored at `design-images/{user_id}/…`; only the owning designer can
 write to their folder, and anyone can read published images.

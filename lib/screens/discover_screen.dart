@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../data/closetx_repository.dart';
 import '../models/garment.dart';
 import '../state/closet_store.dart';
+import '../state/session_store.dart';
 import '../supabase/supabase_config.dart';
 import '../theme.dart';
 import '../widgets/closet_widgets.dart';
+import 'account_screens.dart';
 import 'closet_screens.dart';
 
 class DiscoverScreen extends StatefulWidget {
@@ -17,7 +19,9 @@ class DiscoverScreen extends StatefulWidget {
 
 class _DiscoverScreenState extends State<DiscoverScreen> {
   String _category = 'All';
+  _DesignSort _designSort = _DesignSort.newest;
   final _repository = ClosetXRepository();
+  String? _savedOwnerKey;
 
   @override
   void initState() {
@@ -27,9 +31,50 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     }
   }
 
-  Future<void> _loadDesigns() => ClosetStoreScope.of(
-    context,
-  ).loadCatalog(_repository.loadPublishedDesigns);
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final session = SessionScope.of(context);
+    final role = session.profile?.role.name ?? 'unknown';
+    final ownerKey = '${session.userId ?? 'guest'}:$role';
+    if (ownerKey == _savedOwnerKey) return;
+    _savedOwnerKey = ownerKey;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ClosetStoreScope.of(context).replaceSavedIds(const []);
+      _loadSavedDesigns();
+    });
+  }
+
+  Future<void> _loadDesigns() async {
+    await ClosetStoreScope.of(
+      context,
+    ).loadCatalog(_repository.loadPublishedDesigns);
+    await _loadSavedDesigns();
+  }
+
+  Future<void> _loadSavedDesigns() async {
+    final session = SessionScope.of(context);
+    await session.ensureProfileLoaded();
+    if (!mounted) return;
+    if (!session.isShopper || session.userId == null) {
+      ClosetStoreScope.of(context).replaceSavedIds(const []);
+      return;
+    }
+    try {
+      final ids = await _repository.loadSavedDesignIds(session.userId!);
+      if (!mounted) return;
+      ClosetStoreScope.of(
+        context,
+      ).replaceSavedIds(ids.map((id) => 'supabase:$id'));
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load saved designs: $error')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +87,22 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     final garments = allGarments.where((garment) {
       return _category == 'All' || garment.category == _category;
     }).toList();
+    final newestOrder = {
+      for (final entry in allGarments.asMap().entries)
+        entry.value.id: entry.key,
+    };
+    int compareByPopularity(Garment first, Garment second) {
+      final countComparison = second.saveCount.compareTo(first.saveCount);
+      return countComparison != 0
+          ? countComparison
+          : newestOrder[first.id]!.compareTo(newestOrder[second.id]!);
+    }
+
+    final featuredGarments = [...garments]..sort(compareByPopularity);
+    final browseGarments = [...garments];
+    if (_designSort == _DesignSort.mostSaved) {
+      browseGarments.sort(compareByPopularity);
+    }
 
     return CustomScrollView(
       key: const PageStorageKey('showroom'),
@@ -78,7 +139,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'THE LOCAL EDIT',
+                  'THE LOCAL DESIGNS',
                   style: TextStyle(
                     color: accent,
                     fontSize: 10,
@@ -147,12 +208,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text('Featured designs', style: headingStyle(21)),
+                  child: Text('Most saved designs', style: headingStyle(21)),
                 ),
                 Text(
-                  isLoadingDatabase
-                      ? 'Loading...'
-                      : '${garments.length} designs',
+                  isLoadingDatabase ? 'Loading...' : 'Popular with shoppers',
                   style: const TextStyle(color: muted, fontSize: 12),
                 ),
               ],
@@ -172,18 +231,15 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               onRetry: _loadDesigns,
             ),
           )
-        else if (!isSupabaseConfigured)
-          const SliverFillRemaining(
-            hasScrollBody: false,
-            child: _SupabaseRequired(),
-          )
-        else if (garments.isEmpty && isSupabaseConfigured)
+        else if (!isSupabaseConfigured || allGarments.isEmpty)
           const SliverFillRemaining(
             hasScrollBody: false,
             child: EmptyState(
               icon: Icons.view_in_ar_outlined,
-              title: 'No designs yet',
-              message: 'Designs published by ClosetX brands will appear here.',
+              title: 'No designs available yet',
+              message:
+                  "We're getting the latest styles ready for you. Check back "
+                  'soon for new designs from local creators.',
             ),
           )
         else if (garments.isEmpty)
@@ -195,23 +251,62 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               message: 'Try another category.',
             ),
           )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-            sliver: SliverGrid(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) => _garmentCard(context, garments[index]),
-                childCount: garments.length,
-              ),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 20,
-                childAspectRatio: 0.60,
+        else ...[
+          _designGrid(featuredGarments.take(4).toList()),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Browse all designs', style: headingStyle(21)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Newest uploads'),
+                        selected: _designSort == _DesignSort.newest,
+                        onSelected: (_) =>
+                            setState(() => _designSort = _DesignSort.newest),
+                      ),
+                      ChoiceChip(
+                        avatar: const Icon(
+                          Icons.favorite_border_rounded,
+                          size: 16,
+                        ),
+                        label: const Text('Most liked'),
+                        selected: _designSort == _DesignSort.mostSaved,
+                        onSelected: (_) =>
+                            setState(() => _designSort = _DesignSort.mostSaved),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
+          _designGrid(browseGarments),
+        ],
       ],
+    );
+  }
+
+  SliverPadding _designGrid(List<Garment> garments) {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+      sliver: SliverGrid(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => _garmentCard(context, garments[index]),
+          childCount: garments.length,
+        ),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 14,
+          mainAxisSpacing: 20,
+          childAspectRatio: 0.60,
+        ),
+      ),
     );
   }
 
@@ -220,7 +315,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     return GarmentCard(
       garment: garment,
       isSaved: store.isSaved(garment),
-      onSave: () => store.toggleSaved(garment),
+      onSave: () => toggleSavedGarment(context, garment),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => ProductDetailScreen(garment: garment),
@@ -230,42 +325,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 }
 
-class _SupabaseRequired extends StatelessWidget {
-  const _SupabaseRequired();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_outlined, size: 36, color: accent),
-            SizedBox(height: 12),
-            Text(
-              'Connect to your ClosetX database',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: ink,
-                fontSize: 19,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'No sample products are bundled. Launch with '
-              '--dart-define-from-file=supabase.env.json to load published '
-              'designs from your Supabase project.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: muted, fontSize: 12, height: 1.5),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+enum _DesignSort { newest, mostSaved }
 
 class _CatalogError extends StatelessWidget {
   const _CatalogError({required this.message, required this.onRetry});
@@ -352,7 +412,7 @@ class SavedScreen extends StatelessWidget {
                 return GarmentCard(
                   garment: garment,
                   isSaved: true,
-                  onSave: () => store.toggleSaved(garment),
+                  onSave: () => toggleSavedGarment(context, garment),
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => ProductDetailScreen(garment: garment),

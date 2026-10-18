@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/closetx_repository.dart';
 import '../models/account.dart';
+import '../models/garment.dart';
 import '../state/closet_store.dart';
 import '../state/session_store.dart';
 import '../supabase/supabase_config.dart';
@@ -73,10 +74,15 @@ Future<void> refreshCatalog(BuildContext context) {
 // ---------------------------------------------------------------------------
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({required this.onContinue, super.key});
+  const LoginScreen({
+    required this.onContinue,
+    this.shopperOnly = false,
+    super.key,
+  });
 
   /// Called when the person continues as a guest or finishes signing in.
   final VoidCallback onContinue;
+  final bool shopperOnly;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -126,7 +132,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 8),
                     Text(
                       _isCreatingAccount
-                          ? 'Shop local designs, or open your own brand and upload your shirts.'
+                          ? widget.shopperOnly
+                                ? 'Create a shopper account to save designs and keep your favourites together.'
+                                : _role == AccountRole.designer
+                                ? 'Create a designer account to set up your brand and upload your designs.'
+                                : 'Create a shopper account to save designs and keep your favourites together.'
+                          : widget.shopperOnly
+                          ? 'Sign in with your shopper account to save this design.'
                           : 'Sign in to keep your favourite local finds together.',
                       style: const TextStyle(
                         color: muted,
@@ -136,33 +148,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 26),
                     if (_isCreatingAccount) ...[
-                      const Text(
-                        'I am joining as',
-                        style: TextStyle(
-                          color: ink,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SegmentedButton<AccountRole>(
-                        segments: const [
-                          ButtonSegment(
-                            value: AccountRole.shopper,
-                            icon: Icon(Icons.shopping_bag_outlined),
-                            label: Text('Shopper'),
-                          ),
-                          ButtonSegment(
-                            value: AccountRole.designer,
-                            icon: Icon(Icons.design_services_outlined),
-                            label: Text('Designer'),
-                          ),
-                        ],
-                        selected: {_role},
-                        onSelectionChanged: (selection) =>
-                            setState(() => _role = selection.first),
-                      ),
-                      const SizedBox(height: 14),
                       TextFormField(
                         controller: _nameController,
                         textInputAction: TextInputAction.next,
@@ -251,11 +236,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 8),
                     TextButton(
-                      onPressed: _isBusy
-                          ? null
-                          : () => setState(
-                              () => _isCreatingAccount = !_isCreatingAccount,
-                            ),
+                      onPressed: _isBusy ? null : _toggleAccountMode,
                       child: Text(
                         _isCreatingAccount
                             ? 'Already have an account? Sign in'
@@ -263,9 +244,20 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const Divider(height: 24),
-                    TextButton(
+                    FilledButton.tonalIcon(
                       onPressed: widget.onContinue,
-                      child: const Text('Continue browsing'),
+                      icon: const Icon(Icons.explore_outlined),
+                      label: const Text('Continue browsing as a guest'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: sage,
+                        foregroundColor: ink,
+                        minimumSize: const Size(0, 52),
+                        side: const BorderSide(color: accent, width: 1),
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -277,6 +269,59 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  Future<void> _toggleAccountMode() async {
+    if (_isCreatingAccount) {
+      setState(() => _isCreatingAccount = false);
+      return;
+    }
+
+    if (widget.shopperOnly) {
+      setState(() {
+        _role = AccountRole.shopper;
+        _isCreatingAccount = true;
+      });
+      return;
+    }
+
+    final role = await showDialog<AccountRole>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('How will you use ClosetX?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.shopping_bag_outlined),
+              title: const Text('Shopper'),
+              subtitle: const Text('Save designs and keep your favourites.'),
+              onTap: () => Navigator.of(dialogContext).pop(AccountRole.shopper),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.design_services_outlined),
+              title: const Text('Designer'),
+              subtitle: const Text('Create a brand and upload your designs.'),
+              onTap: () =>
+                  Navigator.of(dialogContext).pop(AccountRole.designer),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || role == null) return;
+    setState(() {
+      _role = role;
+      _isCreatingAccount = true;
+    });
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final session = SessionScope.of(context);
@@ -285,6 +330,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final email = _emailController.text.trim();
       final password = _passwordController.text;
       if (_isCreatingAccount) {
+        final isDesignerApplication = _role == AccountRole.designer;
         final outcome = await session.signUp(
           email: email,
           password: password,
@@ -294,11 +340,23 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
         if (outcome == SignUpOutcome.confirmEmail) {
           setState(() => _isCreatingAccount = false);
-          _showMessage(
-            context,
-            'Check $email for a confirmation link, then sign in.',
-          );
+          if (isDesignerApplication) {
+            await _showDesignerApplicationSubmitted(
+              context,
+              email,
+              needsEmailConfirmation: true,
+            );
+          } else {
+            _showMessage(
+              context,
+              'Check $email for a confirmation link, then sign in.',
+            );
+          }
           return;
+        }
+        if (isDesignerApplication) {
+          await _showDesignerApplicationSubmitted(context, email);
+          if (!mounted) return;
         }
       } else {
         await session.signIn(email: email, password: password);
@@ -309,6 +367,79 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => _isBusy = false);
     }
+  }
+}
+
+Future<void> _showDesignerApplicationSubmitted(
+  BuildContext context,
+  String email, {
+  bool needsEmailConfirmation = false,
+}) async {
+  await showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Application submitted'),
+      content: Text(
+        needsEmailConfirmation
+            ? 'Your designer application is pending review. Confirm your email '
+                  'using the link sent to $email, then sign in. We’ll email you '
+                  'when an admin accepts or declines your application.'
+            : 'Your designer application is pending review. We’ll email $email '
+                  'when an admin accepts or declines your application.',
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Got it'),
+        ),
+      ],
+    ),
+  );
+}
+
+Future<void> toggleSavedGarment(BuildContext context, Garment garment) async {
+  final session = SessionScope.of(context);
+  if (!session.isSignedIn) {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (routeContext) => LoginScreen(
+          shopperOnly: true,
+          onContinue: () => Navigator.of(routeContext).pop(),
+        ),
+      ),
+    );
+    if (!context.mounted) return;
+  }
+
+  await session.ensureProfileLoaded();
+  if (!context.mounted) return;
+  if (session.loadError != null) {
+    _showMessage(
+      context,
+      'Could not verify your shopper account: ${_friendlyError(session.loadError!)}',
+    );
+    return;
+  }
+  if (!session.isShopper || session.userId == null) {
+    _showMessage(context, 'Sign in with a shopper account to save designs.');
+    return;
+  }
+  if (!garment.id.startsWith('supabase:')) {
+    _showMessage(context, 'This design cannot be saved right now.');
+    return;
+  }
+
+  final store = ClosetStoreScope.of(context);
+  final isSaved = store.isSaved(garment);
+  try {
+    await ClosetXRepository().setDesignSaved(
+      shopperId: session.userId!,
+      designId: garment.id.substring('supabase:'.length),
+      isSaved: !isSaved,
+    );
+    if (context.mounted) store.toggleSaved(garment);
+  } catch (error) {
+    if (context.mounted) _showMessage(context, _friendlyError(error));
   }
 }
 
@@ -701,6 +832,15 @@ class _DesignerStudioScreenState extends State<DesignerStudioScreen> {
                               style: const TextStyle(
                                 color: muted,
                                 fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${design.saveCount} ${design.saveCount == 1 ? 'shopper' : 'shoppers'} saved this',
+                              style: const TextStyle(
+                                color: accent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                             const SizedBox(height: 4),

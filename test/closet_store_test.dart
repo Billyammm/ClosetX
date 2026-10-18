@@ -24,6 +24,14 @@ void main() {
     expect(store.savedGarments, isEmpty);
   });
 
+  test('saved ids can be replaced after loading shopper saves', () {
+    store.replaceSavedIds(['first', 'second']);
+    expect(store.savedIds, {'first', 'second'});
+
+    store.replaceSavedIds(['second']);
+    expect(store.savedIds, {'second'});
+  });
+
   test('bag merges the same garment and updates subtotal', () {
     final garment = testGarments.first;
     final other = testGarments[1];

@@ -1,5 +1,5 @@
 const recoveryStorageKey = 'closetx_password_recovery_pending';
-const recoveryRedirectUrl = 'https://admin-dashboard-one-alpha-13.vercel.app/login.html';
+const recoveryRedirectUrl = `${window.location.origin}${window.location.pathname}`;
 let isRecoveryFlow =
     new URLSearchParams(window.location.hash.slice(1)).get('type') === 'recovery' ||
     sessionStorage.getItem(recoveryStorageKey) === 'true';
