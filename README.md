@@ -133,14 +133,17 @@ EmailJS to email the applicant's registered address, including Gmail addresses.
 
 1. Create an EmailJS email service and a template. Set the template recipient
    to `{{to_email}}`; the available template variables are `to_name`,
-   `subject`, `application_status`, `message`, and `rejection_reason`.
-2. Set the EmailJS service ID, template ID, and public key as Edge Function
-   secrets in the linked Supabase project:
+   `subject`, `application_status`, `message`, and `rejection_reason`. In
+   EmailJS, enable **Allow EmailJS API for non-browser applications** under
+   Account > Security.
+2. Set the EmailJS service ID, template ID, public key, and private key as Edge
+   Function secrets in the linked Supabase project:
 
    ```powershell
    supabase secrets set EMAILJS_SERVICE_ID=service_your_service_id
    supabase secrets set EMAILJS_TEMPLATE_ID=template_your_template_id
    supabase secrets set EMAILJS_PUBLIC_KEY=your_emailjs_public_key
+   supabase secrets set EMAILJS_PRIVATE_KEY=your_emailjs_private_key
    ```
 
 3. Deploy the function:
@@ -149,10 +152,10 @@ EmailJS to email the applicant's registered address, including Gmail addresses.
    supabase functions deploy review-designer-application
    ```
 
-The EmailJS configuration and Supabase service-role key are only used by the
-Edge Function; never add them to the Flutter app, dashboard, or source control.
-An admin decision is saved even if EmailJS cannot send the message, and the
-dashboard displays a warning when delivery fails.
+Keep the EmailJS private key in Supabase secrets; never add it to the Flutter
+app, dashboard, or source control. An admin decision is saved even if EmailJS
+cannot send the message, and the dashboard displays a warning when delivery
+fails.
 
 The app only displays published designs fetched from the configured Supabase
 project. It does not bundle fallback/sample products. If the project

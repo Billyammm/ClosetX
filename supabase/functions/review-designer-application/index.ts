@@ -46,8 +46,7 @@ Deno.serve(async (request: Request) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+  if (!supabaseUrl || !anonKey) {
     console.error('Required Supabase Edge Function environment variables are missing.');
     return jsonResponse(500, { error: 'Application review is not configured on the server.' });
   }
@@ -65,10 +64,7 @@ Deno.serve(async (request: Request) => {
     return jsonResponse(403, { error: 'Only a ClosetX administrator can review applications.' });
   }
 
-  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-  const { data: profile, error: reviewError } = await adminClient
+  const { data: profile, error: reviewError } = await userClient
     .from('profiles')
     .update({
       designer_status: body.status,
@@ -101,12 +97,13 @@ Deno.serve(async (request: Request) => {
   const emailJsServiceId = Deno.env.get('EMAILJS_SERVICE_ID');
   const emailJsTemplateId = Deno.env.get('EMAILJS_TEMPLATE_ID');
   const emailJsPublicKey = Deno.env.get('EMAILJS_PUBLIC_KEY');
-  if (!emailJsServiceId || !emailJsTemplateId || !emailJsPublicKey) {
+  const emailJsPrivateKey = Deno.env.get('EMAILJS_PRIVATE_KEY');
+  if (!emailJsServiceId || !emailJsTemplateId || !emailJsPublicKey || !emailJsPrivateKey) {
     console.error('EmailJS environment variables are missing.');
     return jsonResponse(200, {
       success: true,
       emailSent: false,
-      warning: 'The application decision was saved, but email notifications are not configured. Set EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, and EMAILJS_PUBLIC_KEY in Supabase secrets.',
+      warning: 'The application decision was saved, but email notifications are not configured. Set EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, and EMAILJS_PRIVATE_KEY in Supabase secrets.',
     });
   }
 
@@ -129,6 +126,7 @@ Deno.serve(async (request: Request) => {
         service_id: emailJsServiceId,
         template_id: emailJsTemplateId,
         user_id: emailJsPublicKey,
+        accessToken: emailJsPrivateKey,
         template_params: {
           to_email: recipient,
           to_name: name,
