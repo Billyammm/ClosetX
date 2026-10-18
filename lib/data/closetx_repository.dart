@@ -90,6 +90,26 @@ class ClosetXRepository {
         .toList(growable: false);
   }
 
+  RealtimeChannel subscribeToDesignChanges({
+    required VoidCallback onChange,
+    required void Function(RealtimeSubscribeStatus status, Object? error)
+    onStatus,
+  }) {
+    return _client
+        .channel('public-design-catalog')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'designs',
+          callback: (_) => onChange(),
+        )
+        .subscribe(onStatus);
+  }
+
+  Future<void> removeDesignChangesSubscription(RealtimeChannel channel) async {
+    await _client.removeChannel(channel);
+  }
+
   Future<List<DesignerDesign>> loadMyDesigns(String userId) async {
     final saveCounts = await loadDesignSaveCounts();
     final saveCountsByDesign = {

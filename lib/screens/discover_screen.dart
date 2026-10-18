@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/closetx_repository.dart';
 import '../models/garment.dart';
@@ -22,13 +25,40 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   _DesignSort _designSort = _DesignSort.newest;
   final _repository = ClosetXRepository();
   String? _savedOwnerKey;
+  RealtimeChannel? _designChangesChannel;
+  Timer? _catalogRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     if (isSupabaseConfigured) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadDesigns());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _loadDesigns();
+        _subscribeToDesignChanges();
+      });
     }
+  }
+
+  void _subscribeToDesignChanges() {
+    _designChangesChannel = _repository.subscribeToDesignChanges(
+      onChange: _scheduleCatalogRefresh,
+      onStatus: (status, error) {
+        if (status == RealtimeSubscribeStatus.subscribed) {
+          _scheduleCatalogRefresh();
+        } else if (status == RealtimeSubscribeStatus.channelError ||
+            status == RealtimeSubscribeStatus.timedOut) {
+          debugPrint('Design catalog realtime subscription failed: $error');
+        }
+      },
+    );
+  }
+
+  void _scheduleCatalogRefresh() {
+    _catalogRefreshTimer?.cancel();
+    _catalogRefreshTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) unawaited(_loadDesigns());
+    });
   }
 
   @override
@@ -74,6 +104,16 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         );
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _catalogRefreshTimer?.cancel();
+    final channel = _designChangesChannel;
+    if (channel != null) {
+      unawaited(_repository.removeDesignChangesSubscription(channel));
+    }
+    super.dispose();
   }
 
   @override
