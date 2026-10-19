@@ -43,6 +43,58 @@ To target a different connected Android device:
 Do not run `flutter install` by itself after making changes, because it can
 reuse an older APK already present in the build output.
 
+### Publishing Android releases for testers
+
+The GitHub Actions workflow builds a signed APK and publishes it as a GitHub
+Release whenever a version tag such as `v1.0.1` is pushed. Releases are public
+because this repository is public. Testers can download the APK from
+`https://github.com/Billyammm/ClosetX/releases`.
+
+Before the first release:
+
+1. Create a dedicated upload key in PowerShell from the project root:
+
+   ```powershell
+   keytool -genkeypair -v -keystore android\closetx-upload-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias closetx-upload
+   ```
+
+   Choose and keep a strong key password. Back up `android\closetx-upload-key.jks`
+   and its passwords somewhere private and secure. The key is ignored by Git;
+   never commit or share it.
+2. Open **GitHub → Billyammm/ClosetX → Settings → Secrets and variables →
+   Actions** and create these repository secrets:
+
+   - `SUPABASE_URL`: the project URL from your local `supabase.env.json`
+   - `SUPABASE_ANON_KEY`: the publishable/anon key from that file (never use a
+     `service_role` key)
+   - `ANDROID_KEYSTORE_BASE64`: the upload keystore encoded as one Base64 line.
+     Copy it to the clipboard from PowerShell with:
+
+     ```powershell
+     [Convert]::ToBase64String([IO.File]::ReadAllBytes("android\closetx-upload-key.jks")) | Set-Clipboard
+     ```
+
+   - `ANDROID_STORE_PASSWORD`: the keystore password
+   - `ANDROID_KEY_PASSWORD`: the key password
+   - `ANDROID_KEY_ALIAS`: `closetx-upload`
+3. Push the repository changes to GitHub, then create and push a new version
+   tag from the commit you want to release. For the first release:
+
+   ```powershell
+   git tag v1.0.1
+   git push origin v1.0.1
+   ```
+
+4. In **GitHub → Actions**, watch the **Android release** workflow. When it
+   succeeds, share the release page link with testers. Each new version tag
+   creates another release with the APK attached.
+
+The upload key must be backed up: every release needs the same key for Android
+to install as an update over the previous release. APKs signed with the
+development/debug key may need to be uninstalled once before installing the
+first GitHub release. Testers download and install each new APK manually; this
+does not provide Play Store-style automatic updates.
+
 To use a Chromium browser other than Chrome (for example Brave), set
 `CHROME_EXECUTABLE` to its `.exe` first.
 

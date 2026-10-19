@@ -33,6 +33,8 @@ migrate_working_dir/
 .pub/
 /build/
 /supabase.env.json
+/android/key.properties
+/android/closetx-upload-key.jks
 
 # Symbolication related
 app.*.symbols
