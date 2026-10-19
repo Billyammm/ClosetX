@@ -930,6 +930,8 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = ClosetStoreScope.of(context);
     final session = SessionScope.of(context);
+    final isDesigner = session.profile?.isDesigner == true;
+    final brand = session.brand;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 28, 20, 30),
       children: [
@@ -949,24 +951,49 @@ class ProfileScreen extends StatelessWidget {
         if (session.profile?.isDesigner == true)
           _DesignerSection(profile: session.profile!),
         const SizedBox(height: 12),
-        _ProfileOption(
-          icon: Icons.bookmark_border_rounded,
-          title: 'Saved pieces',
-          subtitle: '${store.savedGarments.length} in your edit',
-          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Open Saved from the bottom navigation.'),
+        if (isDesigner) ...[
+          if (brand != null)
+            _ProfileOption(
+              icon: Icons.storefront_outlined,
+              title: 'Brand profile',
+              subtitle: 'Edit your brand information and logo',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const BrandEditorScreen(),
+                ),
+              ),
+            ),
+          if (session.profile?.isApprovedDesigner == true)
+            _ProfileOption(
+              icon: Icons.checkroom_outlined,
+              title: 'My Designs',
+              subtitle: 'Manage your uploaded designs',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const DesignerStudioScreen(),
+                ),
+              ),
+            ),
+        ] else ...[
+          _ProfileOption(
+            icon: Icons.bookmark_border_rounded,
+            title: 'Saved pieces',
+            subtitle: '${store.savedGarments.length} in your edit',
+            onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Open Saved from the bottom navigation.'),
+              ),
             ),
           ),
-        ),
-        _ProfileOption(
-          icon: Icons.shopping_bag_outlined,
-          title: 'Shopping bag',
-          subtitle: '${store.cartCount} pieces',
-          onTap: () => Navigator.of(
-            context,
-          ).push(MaterialPageRoute<void>(builder: (_) => const CartScreen())),
-        ),
+          _ProfileOption(
+            icon: Icons.shopping_bag_outlined,
+            title: 'Shopping bag',
+            subtitle: '${store.cartCount} pieces',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const CartScreen()),
+            ),
+          ),
+        ],
         _ProfileOption(
           icon: Icons.eco_outlined,
           title: 'Our local edit',
@@ -986,8 +1013,10 @@ class ProfileScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 15),
-        const Text(
-          'Saved pieces and your bag are kept for this session only.',
+        Text(
+          isDesigner
+              ? 'Application status updates appear in the notification icon.'
+              : 'Saved pieces and your bag are kept for this session only.',
           style: TextStyle(color: muted, fontSize: 11, height: 1.5),
         ),
       ],
@@ -1033,6 +1062,39 @@ class _ProfileOption extends StatelessWidget {
 
 class _AccountCard extends StatelessWidget {
   const _AccountCard();
+
+  Future<void> _confirmSignOut(BuildContext context) async {
+    final shouldSignOut = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text(
+          'Are you sure you want to sign out of your ClosetX account?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (shouldSignOut != true || !context.mounted) return;
+
+    try {
+      await SessionScope.of(context).signOut();
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not sign out: $error')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1107,7 +1169,7 @@ class _AccountCard extends StatelessWidget {
           if (signedIn)
             IconButton(
               tooltip: 'Sign out',
-              onPressed: () => session.signOut(),
+              onPressed: () => _confirmSignOut(context),
               icon: const Icon(Icons.logout_rounded, color: muted),
             )
           else

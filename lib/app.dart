@@ -70,9 +70,10 @@ class _ClosetShellState extends State<ClosetShell> {
 
   @override
   Widget build(BuildContext context) {
+    final isDesigner = SessionScope.of(context).profile?.isDesigner == true;
     final pages = [
       const DiscoverScreen(),
-      const SavedScreen(),
+      isDesigner ? const DesignerStudioScreen() : const SavedScreen(),
       const ImpactScreen(),
       const ProfileScreen(),
     ];
@@ -91,9 +92,13 @@ class _ClosetShellState extends State<ClosetShell> {
             icon: Icon(Icons.grid_view_rounded),
             label: 'Discover',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.bookmark_border_rounded),
-            label: 'Saved',
+          NavigationDestination(
+            icon: Icon(
+              isDesigner
+                  ? Icons.checkroom_outlined
+                  : Icons.bookmark_border_rounded,
+            ),
+            label: isDesigner ? 'My Designs' : 'Saved',
           ),
           const NavigationDestination(
             icon: Icon(Icons.eco_outlined),

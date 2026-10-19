@@ -163,6 +163,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   ),
                   icon: const Icon(Icons.search_rounded),
                 ),
+                if (SessionScope.of(context).profile?.isDesigner == true)
+                  const ApplicationStatusButton(),
                 CartCountButton(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(builder: (_) => const CartScreen()),
@@ -361,6 +363,85 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           builder: (_) => ProductDetailScreen(garment: garment),
         ),
       ),
+    );
+  }
+}
+
+class ApplicationStatusButton extends StatelessWidget {
+  const ApplicationStatusButton({super.key});
+
+  Future<void> _showStatus(BuildContext context) async {
+    final session = SessionScope.of(context);
+    await session.refresh();
+    if (!context.mounted) return;
+    final profile = session.profile;
+    if (profile == null || !profile.isDesigner) return;
+    final isAccepted = profile.designerStatus == 'approved';
+    final isDeclined = profile.designerStatus == 'rejected';
+    if (!isAccepted && !isDeclined) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              isAccepted
+                  ? Icons.check_circle_outline_rounded
+                  : Icons.cancel_outlined,
+              color: isAccepted ? accent : Colors.red.shade700,
+            ),
+            const SizedBox(width: 10),
+            Text(isAccepted ? 'Application accepted' : 'Application declined'),
+          ],
+        ),
+        content: Text(
+          isAccepted
+              ? 'Your designer application was accepted. You can now manage your brand and upload designs.'
+              : profile.designerRejectionReason?.trim().isNotEmpty == true
+              ? profile.designerRejectionReason!
+              : 'Your designer application was not approved at this time.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = SessionScope.of(context).profile;
+    final hasDecision =
+        profile?.designerStatus == 'approved' ||
+        profile?.designerStatus == 'rejected';
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          tooltip: 'Application status',
+          onPressed: hasDecision ? () => _showStatus(context) : null,
+          icon: const Icon(Icons.notifications_none_rounded),
+        ),
+        if (hasDecision)
+          Positioned(
+            top: 9,
+            right: 9,
+            child: IgnorePointer(
+              child: Container(
+                width: 7,
+                height: 7,
+                decoration: const BoxDecoration(
+                  color: accent,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
