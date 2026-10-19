@@ -37,6 +37,46 @@ function formatDate(value) {
     return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString();
 }
 
+function createTextElement(tagName, className, text) {
+    const element = document.createElement(tagName);
+    if (className) element.className = className;
+    if (text !== undefined && text !== null) element.textContent = String(text);
+    return element;
+}
+
+function createEmptyState(iconClass, title, description) {
+    const state = createTextElement('div', 'empty-state');
+    const icon = createTextElement('span', 'empty-state-icon');
+    icon.append(createTextElement('i', iconClass));
+    state.append(
+        icon,
+        createTextElement('h3', '', title),
+        createTextElement('p', '', description),
+    );
+    return state;
+}
+
+function createErrorNotice(message) {
+    return createTextElement(
+        'div',
+        'rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800',
+        message,
+    );
+}
+
+function appendStarRating(parent, rating, className, spacingClass = '') {
+    const value = Number(rating);
+    if (!Number.isFinite(value) || value <= 0) return;
+    const stars = Math.max(0, Math.min(5, Math.round(value)));
+    const label = createTextElement(
+        'p',
+        [className, spacingClass].filter(Boolean).join(' '),
+        `${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}`,
+    );
+    label.setAttribute('aria-label', `${stars} out of 5 stars`);
+    parent.append(label);
+}
+
 function showDashboardError(message) {
     let banner = document.getElementById('dashboard-error');
     if (!banner) {
@@ -806,16 +846,47 @@ function renderFeedback() {
     });
     const errorElement = document.getElementById('feedback-error');
     errorElement.classList.toggle('hidden', !feedbackError);
-    errorElement.innerHTML = feedbackError
-        ? `<div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">${escapeHtml(feedbackError.message)}</div>`
-        : '';
-    document.getElementById('feedback-list').innerHTML = feedbackError ? '' : feedback.length ? `
-        <div class="space-y-3">${feedback.map((item) => `<article data-searchable class="rounded-xl border border-gray-200 bg-white p-5">
-            <div class="flex flex-wrap items-center justify-between gap-2"><strong>${escapeHtml(item.author_name || 'ClosetX shopper')}</strong><span class="text-sm text-gray-500">${escapeHtml(formatDate(item.created_at))}</span></div>
-            ${item.author_email ? `<p class="mt-1 text-sm text-gray-500">${escapeHtml(item.author_email)}</p>` : ''}
-            ${item.rating ? `<p class="mt-2 text-amber-600" aria-label="${escapeHtml(item.rating)} out of 5 stars">${'★'.repeat(item.rating)}${'☆'.repeat(5 - item.rating)}</p>` : ''}
-            <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">${escapeHtml(item.message)}</p>
-        </article>`).join('')}</div>` : '<div class="empty-state"><span class="empty-state-icon"><i class="far fa-comment-dots"></i></span><h3>No app feedback yet.</h3><p>Feedback submitted about the ClosetX app will appear here.</p></div>';
+    errorElement.replaceChildren();
+    if (feedbackError) errorElement.append(createErrorNotice(feedbackError.message));
+
+    const feedbackList = document.getElementById('feedback-list');
+    feedbackList.replaceChildren();
+    if (!feedbackError && feedback.length) {
+        const list = createTextElement('div', 'space-y-3');
+        feedback.forEach((item) => {
+            const article = createTextElement(
+                'article',
+                'rounded-xl border border-gray-200 bg-white p-5',
+            );
+            article.setAttribute('data-searchable', '');
+            const heading = createTextElement(
+                'div',
+                'flex flex-wrap items-center justify-between gap-2',
+            );
+            heading.append(
+                createTextElement('strong', '', item.author_name || 'ClosetX shopper'),
+                createTextElement('span', 'text-sm text-gray-500', formatDate(item.created_at)),
+            );
+            article.append(heading);
+            if (item.author_email) {
+                article.append(createTextElement('p', 'mt-1 text-sm text-gray-500', item.author_email));
+            }
+            appendStarRating(article, item.rating, 'text-amber-600', 'mt-2');
+            article.append(createTextElement(
+                'p',
+                'mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700',
+                item.message,
+            ));
+            list.append(article);
+        });
+        feedbackList.append(list);
+    } else if (!feedbackError) {
+        feedbackList.append(createEmptyState(
+            'far fa-comment-dots',
+            'No app feedback yet.',
+            'Feedback submitted about the ClosetX app will appear here.',
+        ));
+    }
     renderDesignReviews();
 }
 
@@ -827,9 +898,9 @@ function renderDesignReviews() {
     });
     const errorElement = document.getElementById('design-reviews-error');
     errorElement.classList.toggle('hidden', !designReviewsError);
-    errorElement.innerHTML = designReviewsError
-        ? `<div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">${escapeHtml(designReviewsError.message)}</div>`
-        : '';
+    errorElement.replaceChildren();
+    if (designReviewsError) errorElement.append(createErrorNotice(designReviewsError.message));
+
     const publishedDesigns = allDesigns.filter((design) => design.is_published);
     const designerGroups = new Map();
     publishedDesigns.forEach((design) => {
@@ -842,26 +913,67 @@ function renderDesignReviews() {
     });
     const designers = [...designerGroups.values()].sort((a, b) => a.name.localeCompare(b.name));
     const designerList = document.getElementById('design-review-designers');
-    designerList.innerHTML = designers.length ? `
-        <div class="rounded-xl border border-gray-200 bg-white p-4">
-            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                    <h4 class="font-bold text-gray-900">Designers</h4>
-                    <p class="mt-1 text-sm text-gray-500">Select a designer to view their published designs and reviews.</p>
-                </div>
-                <span class="text-sm text-gray-500">${designers.length} designer${designers.length === 1 ? '' : 's'}</span>
-            </div>
-            <div class="flex flex-wrap gap-2" role="list" aria-label="Designers with published designs">
-                <button type="button" class="filter-tab ${selectedReviewDesignerId === 'all' ? 'active' : ''}" data-review-designer="all">All designers</button>
-                ${designers.map((designer) => `<button type="button" class="filter-tab ${selectedReviewDesignerId === designer.id ? 'active' : ''}" data-review-designer="${escapeHtml(designer.id)}">${escapeHtml(designer.name)} <span>${designer.designs.length}</span></button>`).join('')}
-            </div>
-        </div>` : '<div class="empty-state"><span class="empty-state-icon"><i class="fas fa-users"></i></span><h3>No published designer designs yet.</h3><p>Published designs will appear here when designers are approved and their designs are published.</p></div>';
-    designerList.querySelectorAll('[data-review-designer]').forEach((button) => {
-        button.addEventListener('click', () => {
-            selectedReviewDesignerId = button.dataset.reviewDesigner;
-            renderDesignReviews();
+    designerList.replaceChildren();
+    if (!designers.length) {
+        designerList.append(createEmptyState(
+            'fas fa-users',
+            'No published designer designs yet.',
+            'Published designs will appear here when designers are approved and their designs are published.',
+        ));
+    } else {
+        const designerPanel = createTextElement(
+            'div',
+            'rounded-xl border border-gray-200 bg-white p-4',
+        );
+        const panelHeading = createTextElement(
+            'div',
+            'mb-3 flex flex-wrap items-center justify-between gap-2',
+        );
+        const panelTitle = createTextElement('div');
+        panelTitle.append(
+            createTextElement('h4', 'font-bold text-gray-900', 'Designers'),
+            createTextElement(
+                'p',
+                'mt-1 text-sm text-gray-500',
+                'Select a designer to view their published designs and reviews.',
+            ),
+        );
+        panelHeading.append(
+            panelTitle,
+            createTextElement(
+                'span',
+                'text-sm text-gray-500',
+                `${designers.length} designer${designers.length === 1 ? '' : 's'}`,
+            ),
+        );
+        const designerButtons = createTextElement('div', 'flex flex-wrap gap-2');
+        designerButtons.setAttribute('role', 'list');
+        designerButtons.setAttribute('aria-label', 'Designers with published designs');
+        const designerFilters = [
+            { id: 'all', name: 'All designers', count: null },
+            ...designers.map((designer) => ({
+                id: designer.id,
+                name: designer.name,
+                count: designer.designs.length,
+            })),
+        ];
+        designerFilters.forEach((designer) => {
+            const button = createTextElement('button', 'filter-tab', designer.name);
+            button.type = 'button';
+            if (selectedReviewDesignerId === designer.id) button.classList.add('active');
+            button.dataset.reviewDesigner = designer.id;
+            if (designer.count !== null) {
+                button.append(createTextElement('span', '', ` ${designer.count}`));
+            }
+            button.addEventListener('click', () => {
+                selectedReviewDesignerId = designer.id;
+                renderDesignReviews();
+            });
+            designerButtons.append(button);
         });
-    });
+        designerPanel.append(panelHeading, designerButtons);
+        designerList.append(designerPanel);
+    }
 
     const selectedGroups = selectedReviewDesignerId === 'all'
         ? designers
@@ -871,40 +983,115 @@ function renderDesignReviews() {
         if (!reviewByDesign.has(review.design_id)) reviewByDesign.set(review.design_id, []);
         reviewByDesign.get(review.design_id).push(review);
     });
-    const cards = selectedGroups.flatMap((designer) => designer.designs.map((design) => {
-        const designReviews = reviewByDesign.get(design.id) || [];
-        const designTitle = design.title || 'Untitled design';
-        return `<article data-searchable class="rounded-xl border border-gray-200 bg-white p-5">
-            <div class="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <h4 class="text-lg font-bold text-gray-900">${escapeHtml(designTitle)}</h4>
-                    <p class="mt-1 text-sm text-gray-500">By ${escapeHtml(designer.name)}</p>
-                </div>
-                <span class="status-pill status-approved">Published</span>
-            </div>
-            <div class="mt-5 border-t border-gray-100 pt-4">
-                <h5 class="text-sm font-bold uppercase tracking-wide text-gray-500">Reviews (${designReviews.length})</h5>
-                ${designReviews.length ? `<div class="mt-3 space-y-3">${designReviews.map((review) => {
-                    const profile = review.profiles || {};
-                    const reviewerName = review.author_name || profile.full_name || 'ClosetX shopper';
-                    return `<div class="rounded-xl bg-gray-50 p-4">
-                        <div class="flex flex-wrap items-center justify-between gap-2">
-                            <strong class="text-sm text-gray-800">${escapeHtml(reviewerName)}</strong>
-                            <span class="text-sm text-gray-500">${escapeHtml(formatDate(review.created_at))}</span>
-                        </div>
-                        <div class="mt-2 flex flex-wrap items-center gap-3">
-                            <span class="text-amber-600" aria-label="${escapeHtml(review.rating)} out of 5 stars">${'★'.repeat(review.rating || 0)}${'☆'.repeat(5 - (review.rating || 0))}</span>
-                            ${profile.email ? `<span class="text-sm text-gray-500">${escapeHtml(profile.email)}</span>` : ''}
-                        </div>
-                        <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">${escapeHtml(review.comment)}</p>
-                    </div>`;
-                }).join('')}</div>` : '<p class="mt-3 text-sm text-gray-500">No reviews for this design yet.</p>'}
-            </div>
-        </article>`;
-    }));
-    document.getElementById('design-reviews-list').innerHTML = designReviewsError ? '' : cards.length
-        ? `<div class="grid grid-cols-1 gap-4">${cards.join('')}</div>`
-        : '<div class="empty-state"><span class="empty-state-icon"><i class="far fa-star"></i></span><h3>No published designs found for this designer.</h3><p>Select another designer to view their designs and reviews.</p></div>';
+    const designReviewsList = document.getElementById('design-reviews-list');
+    designReviewsList.replaceChildren();
+    if (!designReviewsError && selectedGroups.length) {
+        const cards = createTextElement('div', 'grid grid-cols-1 gap-4');
+        selectedGroups.forEach((designer) => {
+            designer.designs.forEach((design) => {
+                const designReviews = reviewByDesign.get(design.id) || [];
+                const article = createTextElement(
+                    'article',
+                    'rounded-xl border border-gray-200 bg-white p-5',
+                );
+                article.setAttribute('data-searchable', '');
+
+                const heading = createTextElement(
+                    'div',
+                    'flex flex-wrap items-start justify-between gap-3',
+                );
+                const designIdentity = createTextElement('div');
+                designIdentity.append(
+                    createTextElement(
+                        'h4',
+                        'text-lg font-bold text-gray-900',
+                        design.title || 'Untitled design',
+                    ),
+                    createTextElement('p', 'mt-1 text-sm text-gray-500', `By ${designer.name}`),
+                );
+                heading.append(
+                    designIdentity,
+                    createTextElement('span', 'status-pill status-approved', 'Published'),
+                );
+
+                const reviewsSection = createTextElement(
+                    'div',
+                    'mt-5 border-t border-gray-100 pt-4',
+                );
+                reviewsSection.append(createTextElement(
+                    'h5',
+                    'text-sm font-bold uppercase tracking-wide text-gray-500',
+                    `Reviews (${designReviews.length})`,
+                ));
+                if (designReviews.length) {
+                    const reviewList = createTextElement('div', 'mt-3 space-y-3');
+                    designReviews.forEach((review) => {
+                        const profile = review.profiles || {};
+                        const reviewerName = review.author_name || profile.full_name || 'ClosetX shopper';
+                        const reviewCard = createTextElement('div', 'rounded-xl bg-gray-50 p-4');
+                        const reviewHeading = createTextElement(
+                            'div',
+                            'flex flex-wrap items-center justify-between gap-2',
+                        );
+                        reviewHeading.append(
+                            createTextElement('strong', 'text-sm text-gray-800', reviewerName),
+                            createTextElement(
+                                'span',
+                                'text-sm text-gray-500',
+                                formatDate(review.created_at),
+                            ),
+                        );
+                        const reviewDetails = createTextElement(
+                            'div',
+                            'mt-2 flex flex-wrap items-center gap-3',
+                        );
+                        const rating = Number(review.rating);
+                        const stars = Number.isFinite(rating)
+                            ? Math.max(0, Math.min(5, Math.round(rating)))
+                            : 0;
+                        const starLabel = createTextElement(
+                            'span',
+                            'text-amber-600',
+                            `${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}`,
+                        );
+                        starLabel.setAttribute('aria-label', `${stars} out of 5 stars`);
+                        reviewDetails.append(starLabel);
+                        if (profile.email) {
+                            reviewDetails.append(
+                                createTextElement('span', 'text-sm text-gray-500', profile.email),
+                            );
+                        }
+                        reviewCard.append(
+                            reviewHeading,
+                            reviewDetails,
+                            createTextElement(
+                                'p',
+                                'mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700',
+                                review.comment,
+                            ),
+                        );
+                        reviewList.append(reviewCard);
+                    });
+                    reviewsSection.append(reviewList);
+                } else {
+                    reviewsSection.append(createTextElement(
+                        'p',
+                        'mt-3 text-sm text-gray-500',
+                        'No reviews for this design yet.',
+                    ));
+                }
+                article.append(heading, reviewsSection);
+                cards.append(article);
+            });
+        });
+        designReviewsList.append(cards);
+    } else if (!designReviewsError) {
+        designReviewsList.append(createEmptyState(
+            'far fa-star',
+            'No published designs found for this designer.',
+            'Select another designer to view their designs and reviews.',
+        ));
+    }
     applyCurrentSearch();
 }
 
