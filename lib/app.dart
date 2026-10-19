@@ -35,17 +35,23 @@ class _ClosetXAppState extends State<ClosetXApp> {
           title: 'ClosetX',
           debugShowCheckedModeBanner: false,
           theme: buildClosetTheme(),
-          home: _session.isSignedIn
-              ? const ClosetShell()
-              : Builder(
-                  builder: (context) => LoginScreen(
-                    onContinue: () => Navigator.of(context).pushReplacement(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const ClosetShell(),
-                      ),
+          home: AnimatedBuilder(
+            animation: _session,
+            builder: (context, _) {
+              if (!_session.isSignedIn) {
+                return LoginScreen(
+                  onContinue: () => Navigator.of(context).pushReplacement(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ClosetShell(),
                     ),
                   ),
-                ),
+                );
+              }
+              return _session.needsGoogleRoleSelection
+                  ? const GoogleRoleSetupScreen()
+                  : const ClosetShell();
+            },
+          ),
         ),
       ),
     );
