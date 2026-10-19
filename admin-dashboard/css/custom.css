@@ -553,6 +553,31 @@ button.bg-gray-700.text-white {
     background: #fff;
 }
 
+.review-brand-panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition:
+        grid-template-rows 320ms cubic-bezier(0.2, 0.8, 0.2, 1),
+        opacity 220ms ease;
+}
+
+.review-brand-panel.is-open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+}
+
+.review-brand-panel-content {
+    min-height: 0;
+    overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .review-brand-panel {
+        transition: none;
+    }
+}
+
 .admin-table {
     width: 100%;
     min-width: 760px;

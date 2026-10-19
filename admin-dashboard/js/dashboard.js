@@ -24,9 +24,14 @@ function escapeHtml(value) {
 }
 
 function safeImageUrl(value) {
+    const imageUrl = safeImageSource(value);
+    return imageUrl ? escapeHtml(imageUrl) : '';
+}
+
+function safeImageSource(value) {
     try {
         const url = new URL(value);
-        return ['http:', 'https:'].includes(url.protocol) ? escapeHtml(url.href) : '';
+        return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
     } catch {
         return '';
     }
@@ -239,9 +244,19 @@ function applyCurrentSearch() {
             : expandedReviewDesignerIds.has(designerId);
         const panel = group.querySelector('[data-review-brand-panel]');
         const button = group.querySelector('[data-review-brand-toggle]');
-        panel?.classList.toggle('hidden', !expanded);
-        button?.setAttribute('aria-expanded', String(expanded));
+        setReviewPanelExpanded(panel, button, expanded);
     });
+}
+
+function setReviewPanelExpanded(panel, button, expanded) {
+    if (!panel || !button) return;
+    panel.classList.toggle('is-open', expanded);
+    panel.inert = !expanded;
+    panel.setAttribute('aria-hidden', String(!expanded));
+    button.setAttribute('aria-expanded', String(expanded));
+    const icon = button.querySelector('i');
+    icon?.classList.toggle('fa-chevron-down', !expanded);
+    icon?.classList.toggle('fa-chevron-up', expanded);
 }
 
 async function loadDashboard() {
@@ -249,11 +264,12 @@ async function loadDashboard() {
     try {
         feedbackError = null;
         designReviewsError = null;
-        const [, , appFeedbackResult, saveCounts] = await Promise.all([
+        const [, , appFeedbackResult, saveCounts, shopperCount] = await Promise.all([
             loadDesigns(),
             loadDesigners(),
             loadFeedback().then(() => ({ success: true })).catch((error) => ({ success: false, error })),
             loadDesignSaveCounts(),
+            loadShopperCount(),
         ]);
         if (!appFeedbackResult.success) {
             feedbackError = appFeedbackResult.error;
@@ -270,7 +286,7 @@ async function loadDashboard() {
             ...design,
             save_count: saveCounts.get(design.id) || 0,
         }));
-        renderStats();
+        renderStats(shopperCount);
         renderRecentActivity();
         renderCharts();
         showSection(currentSection);
@@ -284,6 +300,15 @@ async function loadDesignSaveCounts() {
     const { data, error } = await closetxSupabase.rpc('get_design_save_counts');
     if (error) throw new Error(`Could not load shopper saves: ${error.message}`);
     return new Map((data || []).map((row) => [row.design_id, Number(row.save_count)]));
+}
+
+async function loadShopperCount() {
+    const { count, error } = await closetxSupabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('role', 'shopper');
+    if (error) throw new Error(`Could not load shopper count: ${error.message}`);
+    return count ?? 0;
 }
 
 async function loadDesigns() {
@@ -361,17 +386,23 @@ async function loadDesignReviews() {
         .filter((review) => review.design?.is_published);
 }
 
-function renderStats() {
+function renderStats(shopperCount) {
     const stats = {
         pending: allDesigns.filter((design) => design.status === 'pending').length,
         approved: allDesigns.filter((design) => design.status === 'approved').length,
         rejected: allDesigns.filter((design) => design.status === 'rejected').length,
         applications: allDesigners.filter((designer) => designer.application_status === 'pending').length,
         designers: allDesigners.filter((designer) => designer.application_status === 'approved').length,
+        registeredDesigners: allDesigners.length,
+        shoppers: shopperCount,
         feedback: allFeedback.length,
         saves: allDesigns.reduce((total, design) => total + (design.save_count || 0), 0),
     };
     document.getElementById('stats-cards').innerHTML = `
+        <div class="metric-card">
+            <span class="metric-icon metric-emerald"><i class="fas fa-users"></i></span>
+            <span><strong>${stats.registeredDesigners + stats.shoppers}</strong><small>Active users</small><small>${stats.registeredDesigners} designer${stats.registeredDesigners === 1 ? '' : 's'} · ${stats.shoppers} shopper${stats.shoppers === 1 ? '' : 's'}</small></span>
+        </div>
         <button type="button" onclick="showSection('applications')" class="metric-card">
             <span class="metric-icon metric-amber"><i class="fas fa-id-card"></i></span>
             <span><strong>${stats.applications}</strong><small>Pending applications</small></span>
@@ -916,9 +947,15 @@ function renderDesignReviews() {
     const designerGroups = new Map();
     publishedDesigns.forEach((design) => {
         const designerId = design.designer_id || design.brand_id || 'unknown';
-        const designerName = design.designer?.brand_name || design.brands?.name || 'ClosetX Designer';
+        const brandName = design.brands?.name || design.designer?.brand_name || 'ClosetX Designer';
         if (!designerGroups.has(designerId)) {
-            designerGroups.set(designerId, { id: designerId, name: designerName, designs: [] });
+            designerGroups.set(designerId, {
+                id: designerId,
+                name: brandName,
+                designerName: design.designer?.full_name || design.designer?.email || 'Designer',
+                logoUrl: design.brands?.logo_url || design.designer?.profile_image_url || '',
+                designs: [],
+            });
         }
         designerGroups.get(designerId).designs.push(design);
     });
@@ -935,7 +972,7 @@ function renderDesignReviews() {
         if (!activeDesignerIds.has(designerId)) expandedReviewDesignerIds.delete(designerId);
     });
     if (!designReviewsError && designers.length) {
-        const brandList = createTextElement('div', 'space-y-3');
+        const brandList = createTextElement('div', 'space-y-4 p-1 sm:p-2');
         designers.forEach((designer, index) => {
             const brandReviews = designer.designs.reduce(
                 (total, design) => total + (reviewByDesign.get(design.id)?.length || 0),
@@ -944,7 +981,7 @@ function renderDesignReviews() {
             const expanded = expandedReviewDesignerIds.has(designer.id);
             const brandGroup = createTextElement(
                 'section',
-                'overflow-hidden rounded-xl border border-gray-200 bg-white',
+                'overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-lg',
             );
             brandGroup.setAttribute('data-searchable', '');
             brandGroup.dataset.reviewBrandGroup = designer.id;
@@ -952,34 +989,78 @@ function renderDesignReviews() {
             const brandId = `design-review-brand-${index}`;
             const brandToggle = createTextElement(
                 'button',
-                'flex w-full items-center justify-between gap-4 p-5 text-left transition-colors hover:bg-gray-50',
+                'group flex w-full items-center gap-4 bg-gradient-to-r from-white to-gray-50/70 p-4 text-left transition-colors hover:from-violet-50/60 hover:to-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 sm:p-5',
             );
             brandToggle.type = 'button';
             brandToggle.dataset.reviewBrandToggle = '';
             brandToggle.setAttribute('aria-controls', brandId);
             brandToggle.setAttribute('aria-expanded', String(expanded));
-            const brandInfo = createTextElement('span', 'min-w-0');
+
+            const avatar = createTextElement(
+                'span',
+                'relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-violet-100 via-fuchsia-50 to-rose-100 text-lg font-bold text-violet-700 shadow-sm ring-1 ring-white',
+            );
+            const initials = designer.name
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((word) => word[0])
+                .join('')
+                .toUpperCase();
+            avatar.append(createTextElement('span', '', initials || 'C'));
+            const logoUrl = safeImageSource(designer.logoUrl);
+            if (logoUrl) {
+                const logo = createTextElement('img', 'absolute inset-0 h-full w-full object-cover');
+                logo.src = logoUrl;
+                logo.alt = '';
+                logo.addEventListener('error', () => logo.remove());
+                avatar.append(logo);
+            }
+
+            const brandInfo = createTextElement('span', 'min-w-0 flex-1');
             brandInfo.append(
-                createTextElement('span', 'block text-base font-bold text-gray-900', designer.name),
                 createTextElement(
                     'span',
-                    'mt-1 block text-sm text-gray-500',
-                    `${designer.designs.length} published design${designer.designs.length === 1 ? '' : 's'} · ${brandReviews} review${brandReviews === 1 ? '' : 's'}`,
+                    'block truncate text-base font-bold text-gray-900 transition-colors group-hover:text-violet-800',
+                    designer.name,
+                ),
+                createTextElement(
+                    'span',
+                    'mt-0.5 block truncate text-sm text-gray-500',
+                    `Designed by ${designer.designerName}`,
                 ),
             );
+            const brandMeta = createTextElement(
+                'span',
+                'hidden shrink-0 items-center gap-2 rounded-full bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 sm:inline-flex',
+                `${brandReviews} review${brandReviews === 1 ? '' : 's'}`,
+            );
+            const reviewIcon = createTextElement('i', 'fas fa-star text-[10px] text-amber-500');
+            reviewIcon.setAttribute('aria-hidden', 'true');
+            brandMeta.prepend(reviewIcon);
             const brandIcon = createTextElement(
                 'i',
-                `fas ${expanded ? 'fa-chevron-up' : 'fa-chevron-down'} text-sm text-gray-500`,
+                `fas ${expanded ? 'fa-chevron-up' : 'fa-chevron-down'} flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-50 text-xs text-gray-500 transition-all group-hover:bg-violet-100 group-hover:text-violet-700`,
             );
             brandIcon.setAttribute('aria-hidden', 'true');
-            brandToggle.append(brandInfo, brandIcon);
+            brandToggle.append(avatar, brandInfo, brandMeta, brandIcon);
 
             const brandPanel = createTextElement(
                 'div',
-                `border-t border-gray-100 p-4 ${expanded ? '' : 'hidden'}`,
+                `review-brand-panel${expanded ? ' is-open' : ''}`,
             );
             brandPanel.id = brandId;
             brandPanel.dataset.reviewBrandPanel = '';
+            brandPanel.inert = !expanded;
+            brandPanel.setAttribute('aria-hidden', String(!expanded));
+            const brandPanelContent = createTextElement(
+                'div',
+                'review-brand-panel-content',
+            );
+            const brandPanelInner = createTextElement(
+                'div',
+                'border-t border-gray-100 bg-gradient-to-b from-gray-50/80 to-white p-4',
+            );
             const designCards = createTextElement('div', 'grid grid-cols-1 gap-4');
             designer.designs.forEach((design) => {
                 const designReviews = reviewByDesign.get(design.id) || [];
@@ -1000,7 +1081,7 @@ function renderDesignReviews() {
                         'text-lg font-bold text-gray-900',
                         design.title || 'Untitled design',
                     ),
-                    createTextElement('p', 'mt-1 text-sm text-gray-500', `By ${designer.name}`),
+                    createTextElement('p', 'mt-1 text-sm text-gray-500', `Designed by ${designer.designerName}`),
                 );
                 heading.append(
                     designIdentity,
@@ -1017,11 +1098,11 @@ function renderDesignReviews() {
                     `Reviews (${designReviews.length})`,
                 ));
                 if (designReviews.length) {
-                    const reviewList = createTextElement('div', 'mt-3 space-y-3');
+                    const reviewList = createTextElement('div', 'mt-2 space-y-2');
                     designReviews.forEach((review) => {
                         const profile = review.profiles || {};
                         const reviewerName = review.author_name || profile.full_name || 'ClosetX shopper';
-                        const reviewCard = createTextElement('div', 'rounded-xl bg-gray-50 p-4');
+                        const reviewCard = createTextElement('div', 'rounded-xl bg-gray-50 p-3');
                         const reviewHeading = createTextElement(
                             'div',
                             'flex flex-wrap items-center justify-between gap-2',
@@ -1036,7 +1117,7 @@ function renderDesignReviews() {
                         );
                         const reviewDetails = createTextElement(
                             'div',
-                            'mt-2 flex flex-wrap items-center gap-3',
+                            'mt-1 flex flex-wrap items-center gap-2',
                         );
                         const rating = Number(review.rating);
                         const stars = Number.isFinite(rating)
@@ -1059,7 +1140,7 @@ function renderDesignReviews() {
                             reviewDetails,
                             createTextElement(
                                 'p',
-                                'mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700',
+                                'mt-2 whitespace-pre-wrap text-sm leading-5 text-gray-700',
                                 review.comment,
                             ),
                         );
@@ -1076,15 +1157,24 @@ function renderDesignReviews() {
                 article.append(heading, reviewsSection);
                 designCards.append(article);
             });
-            brandPanel.append(designCards);
+            brandPanelInner.append(designCards);
+            brandPanelContent.append(brandPanelInner);
+            brandPanel.append(brandPanelContent);
             brandToggle.addEventListener('click', () => {
-                const willExpand = brandPanel.classList.contains('hidden');
-                if (willExpand) expandedReviewDesignerIds.add(designer.id);
-                else expandedReviewDesignerIds.delete(designer.id);
-                brandPanel.classList.toggle('hidden', !willExpand);
-                brandToggle.setAttribute('aria-expanded', String(willExpand));
-                brandIcon.classList.toggle('fa-chevron-down', !willExpand);
-                brandIcon.classList.toggle('fa-chevron-up', willExpand);
+                const willExpand = !brandPanel.classList.contains('is-open');
+                if (willExpand) {
+                    expandedReviewDesignerIds.clear();
+                    designReviewsList.querySelectorAll('[data-review-brand-group]').forEach((group) => {
+                        const otherPanel = group.querySelector('[data-review-brand-panel]');
+                        const otherToggle = group.querySelector('[data-review-brand-toggle]');
+                        if (otherPanel === brandPanel) return;
+                        setReviewPanelExpanded(otherPanel, otherToggle, false);
+                    });
+                    expandedReviewDesignerIds.add(designer.id);
+                } else {
+                    expandedReviewDesignerIds.delete(designer.id);
+                }
+                setReviewPanelExpanded(brandPanel, brandToggle, willExpand);
             });
             brandGroup.append(brandToggle, brandPanel);
             brandList.append(brandGroup);
