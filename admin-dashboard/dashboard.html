@@ -143,9 +143,9 @@
                     <h2 id="page-title" class="text-3xl font-bold text-gray-900 mb-1">Overview</h2>
                     <p id="page-subtitle" class="text-gray-600">Dashboard analytics and insights</p>
                 </div>
-                <button onclick="refreshData()" class="refresh-button flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 border border-gray-200 rounded-lg transition-all font-semibold">
-                    <i class="fas fa-sync-alt"></i>
-                    <span>Refresh</span>
+                <button id="refresh-dashboard" type="button" onclick="refreshData()" class="refresh-button flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 border border-gray-200 rounded-lg transition-all font-semibold" aria-label="Refresh dashboard">
+                    <i class="fas fa-sync-alt" aria-hidden="true"></i>
+                    <span>Refresh dashboard</span>
                 </button>
             </header>
 

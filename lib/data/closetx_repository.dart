@@ -103,6 +103,12 @@ class ClosetXRepository {
           table: 'designs',
           callback: (_) => onChange(),
         )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'brands',
+          callback: (_) => onChange(),
+        )
         .subscribe(onStatus);
   }
 

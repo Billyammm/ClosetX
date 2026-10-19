@@ -759,11 +759,17 @@ function closeModal(id) {
 }
 
 async function refreshData() {
-    const button = document.querySelector('.refresh-button');
-    if (button) button.disabled = true;
+    const button = document.getElementById('refresh-dashboard');
+    if (button) {
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+    }
     try {
         await loadDashboard();
     } finally {
-        if (button) button.disabled = false;
+        if (button) {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+        }
     }
 }

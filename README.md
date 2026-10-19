@@ -67,14 +67,16 @@ For a completely fresh Supabase project, run these migrations in order:
 5. `supabase/migrations/20261009120000_public_design_popularity.sql`
 6. `supabase/migrations/20261010120000_realtime_published_designs.sql`
 7. `supabase/migrations/20261011120000_google_role_setup.sql`
+8. `supabase/migrations/20261019130000_realtime_catalog_brands.sql`
 
-The final migration enables Postgres Changes for `public.designs`. While the
-Discover screen is open, the app subscribes to changes and reloads the public
-catalog after an admin publishes, updates, or removes a design. Realtime events
-only notify rows allowed by the existing design read policies; the catalog is
-still queried with `is_published = true`. Apply this migration to an existing
-project as well as fresh projects to enable live catalog updates and Google
-role setup.
+The Realtime migrations enable Postgres Changes for `public.designs` and
+`public.brands`. While the Discover screen is open, the app subscribes to
+changes and reloads the public catalog after an admin publishes, updates, or
+removes a design or a designer updates their brand. Realtime events only
+notify rows allowed by the existing read policies; the catalog is still
+queried with `is_published = true`. Apply these migrations to an existing
+project as well as fresh projects to enable live design and brand updates and
+Google role setup.
 
 ### Google sign-in
 
