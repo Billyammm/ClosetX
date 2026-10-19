@@ -35,17 +35,23 @@ class _ClosetXAppState extends State<ClosetXApp> {
           title: 'ClosetX',
           debugShowCheckedModeBanner: false,
           theme: buildClosetTheme(),
-          home: _session.isSignedIn
-              ? const ClosetShell()
-              : Builder(
-                  builder: (context) => LoginScreen(
-                    onContinue: () => Navigator.of(context).pushReplacement(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const ClosetShell(),
-                      ),
+          home: AnimatedBuilder(
+            animation: _session,
+            builder: (context, _) {
+              if (!_session.isSignedIn) {
+                return LoginScreen(
+                  onContinue: () => Navigator.of(context).pushReplacement(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ClosetShell(),
                     ),
                   ),
-                ),
+                );
+              }
+              return _session.needsGoogleRoleSelection
+                  ? const GoogleRoleSetupScreen()
+                  : const ClosetShell();
+            },
+          ),
         ),
       ),
     );
@@ -64,10 +70,13 @@ class _ClosetShellState extends State<ClosetShell> {
 
   @override
   Widget build(BuildContext context) {
+    final isDesigner = SessionScope.of(context).profile?.isDesigner == true;
     final pages = [
       const DiscoverScreen(),
-      const SavedScreen(),
-      const ImpactScreen(),
+      isDesigner
+          ? const DesignerStudioScreen()
+          : const SearchScreen(isBrowse: true),
+      if (!isDesigner) const SavedScreen(),
       const ProfileScreen(),
     ];
 
@@ -85,14 +94,17 @@ class _ClosetShellState extends State<ClosetShell> {
             icon: Icon(Icons.grid_view_rounded),
             label: 'Discover',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.bookmark_border_rounded),
-            label: 'Saved',
+          NavigationDestination(
+            icon: Icon(
+              isDesigner ? Icons.checkroom_outlined : Icons.search_rounded,
+            ),
+            label: isDesigner ? 'My Designs' : 'Browse',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.eco_outlined),
-            label: 'Impact',
-          ),
+          if (!isDesigner)
+            const NavigationDestination(
+              icon: Icon(Icons.bookmark_border_rounded),
+              label: 'Saved',
+            ),
           const NavigationDestination(
             icon: Icon(Icons.person_outline_rounded),
             label: 'Profile',

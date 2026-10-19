@@ -80,14 +80,54 @@ class ClosetXRepository {
       for (final row in (saveCounts as List).cast<Map<String, dynamic>>())
         row['design_id'] as String: (row['save_count'] as num).toInt(),
     };
+    final reviewRows = await _client
+        .from('design_reviews')
+        .select('design_id, rating');
+    final ratingsByDesign = <String, List<int>>{};
+    for (final row in reviewRows) {
+      final designId = row['design_id'] as String;
+      ratingsByDesign.putIfAbsent(designId, () => []).add(row['rating'] as int);
+    }
     return rows
         .map(
           (row) => _garmentFromRow(
             row,
             saveCount: saveCountsByDesign[row['id'] as String] ?? 0,
+            ratingAverage: _averageRating(ratingsByDesign[row['id'] as String]),
           ),
         )
         .toList(growable: false);
+  }
+
+  double _averageRating(List<int>? ratings) {
+    if (ratings == null || ratings.isEmpty) return 0;
+    return ratings.reduce((total, rating) => total + rating) / ratings.length;
+  }
+
+  RealtimeChannel subscribeToDesignChanges({
+    required VoidCallback onChange,
+    required void Function(RealtimeSubscribeStatus status, Object? error)
+    onStatus,
+  }) {
+    return _client
+        .channel('public-design-catalog')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'designs',
+          callback: (_) => onChange(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'brands',
+          callback: (_) => onChange(),
+        )
+        .subscribe(onStatus);
+  }
+
+  Future<void> removeDesignChangesSubscription(RealtimeChannel channel) async {
+    await _client.removeChannel(channel);
   }
 
   Future<List<DesignerDesign>> loadMyDesigns(String userId) async {
@@ -152,7 +192,11 @@ class ClosetXRepository {
     }
   }
 
-  Garment _garmentFromRow(Map<String, dynamic> row, {int saveCount = 0}) {
+  Garment _garmentFromRow(
+    Map<String, dynamic> row, {
+    int saveCount = 0,
+    double ratingAverage = 0,
+  }) {
     final rawPrice = row['price'];
     final price = rawPrice is num
         ? rawPrice.round()
@@ -185,6 +229,7 @@ class ClosetXRepository {
           _optionalString(row['description']) ??
           'A design from the ClosetX community.',
       saveCount: saveCount,
+      ratingAverage: ratingAverage,
     );
   }
 
@@ -319,6 +364,67 @@ class ClosetXRepository {
         .from('designs')
         .update({'is_published': isPublished})
         .eq('id', designId);
+  }
+
+  Future<List<DesignReview>> loadDesignReviews(String designId) async {
+    final rows = await _client
+        .from('design_reviews')
+        .select('rating, comment, author_name, created_at, user_id')
+        .eq('design_id', designId)
+        .order('created_at', ascending: false);
+    final userId = _client.auth.currentUser?.id;
+    return rows
+        .map(
+          (row) => DesignReview(
+            rating: row['rating'] as int,
+            comment: row['comment'] as String,
+            authorName:
+                (row['author_name'] as String?)?.trim().isNotEmpty == true
+                ? row['author_name'] as String
+                : 'Shopper',
+            createdAt: DateTime.parse(row['created_at'] as String),
+            isMine: row['user_id'] == userId,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> submitDesignReview({
+    required String designId,
+    required int rating,
+    required String comment,
+  }) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('Sign in to rate and comment on a design.');
+    }
+    final metadataName = user.userMetadata?['full_name'];
+    final authorName = metadataName is String && metadataName.trim().isNotEmpty
+        ? metadataName.trim()
+        : (user.email?.split('@').first ?? 'Shopper');
+    final existing = await _client
+        .from('design_reviews')
+        .select('id')
+        .eq('design_id', designId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+    final values = {
+      'author_name': authorName,
+      'rating': rating,
+      'comment': comment.trim(),
+    };
+    if (existing != null) {
+      await _client
+          .from('design_reviews')
+          .update(values)
+          .eq('id', existing['id']);
+      return;
+    }
+    await _client.from('design_reviews').insert({
+      ...values,
+      'design_id': designId,
+      'user_id': user.id,
+    });
   }
 
   Future<void> submitFeedback({

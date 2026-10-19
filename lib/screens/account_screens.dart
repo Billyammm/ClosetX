@@ -214,7 +214,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 14),
                     FilledButton(
                       onPressed: _isBusy ? null : _submit,
                       style: FilledButton.styleFrom(
@@ -234,7 +234,18 @@ class _LoginScreenState extends State<LoginScreen> {
                               _isCreatingAccount ? 'Create account' : 'Sign in',
                             ),
                     ),
-                    const SizedBox(height: 8),
+                    if (!_isCreatingAccount) ...[
+                      const SizedBox(height: 4),
+                      OutlinedButton.icon(
+                        onPressed: _isBusy ? null : _signInWithGoogle,
+                        icon: const Icon(Icons.g_mobiledata_rounded),
+                        label: const Text('Continue with Google'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 40),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 4),
                     TextButton(
                       onPressed: _isBusy ? null : _toggleAccountMode,
                       child: Text(
@@ -243,7 +254,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             : 'New to ClosetX? Create an account',
                       ),
                     ),
-                    const Divider(height: 24),
+                    const Divider(height: 16),
                     FilledButton.tonalIcon(
                       onPressed: widget.onContinue,
                       icon: const Icon(Icons.explore_outlined),
@@ -331,12 +342,21 @@ class _LoginScreenState extends State<LoginScreen> {
       final password = _passwordController.text;
       if (_isCreatingAccount) {
         final isDesignerApplication = _role == AccountRole.designer;
-        final outcome = await session.signUp(
-          email: email,
-          password: password,
-          fullName: _nameController.text.trim(),
-          role: _role,
-        );
+        final fullName = _nameController.text.trim();
+        final outcome = isDesignerApplication
+            ? await session.signUp(
+                email: email,
+                password: password,
+                fullName: fullName,
+                role: _role,
+              )
+            : await session
+                  .signUpShopper(
+                    email: email,
+                    password: password,
+                    fullName: fullName,
+                  )
+                  .then((_) => SignUpOutcome.signedIn);
         if (!mounted) return;
         if (outcome == SignUpOutcome.confirmEmail) {
           setState(() => _isCreatingAccount = false);
@@ -367,6 +387,83 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => _isBusy = false);
     }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() => _isBusy = true);
+    try {
+      await SessionScope.of(context).signInWithGoogle();
+    } catch (error) {
+      if (mounted) _showMessage(context, _friendlyError(error));
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
+  }
+}
+
+class GoogleRoleSetupScreen extends StatefulWidget {
+  const GoogleRoleSetupScreen({super.key});
+
+  @override
+  State<GoogleRoleSetupScreen> createState() => _GoogleRoleSetupScreenState();
+}
+
+class _GoogleRoleSetupScreenState extends State<GoogleRoleSetupScreen> {
+  bool _isBusy = false;
+
+  Future<void> _choose(AccountRole role) async {
+    setState(() => _isBusy = true);
+    try {
+      await SessionScope.of(context).chooseGoogleRole(role);
+    } catch (error) {
+      if (mounted) _showMessage(context, _friendlyError(error));
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const ClosetLogo(),
+                  const SizedBox(height: 28),
+                  Text('Set up your ClosetX account.', style: headingStyle(29)),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Choose how you want to use ClosetX. You can browse as a shopper or apply to become a designer.',
+                    style: TextStyle(color: muted, height: 1.5),
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton(
+                    onPressed: _isBusy
+                        ? null
+                        : () => _choose(AccountRole.shopper),
+                    child: const Text('Continue as shopper'),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: _isBusy
+                        ? null
+                        : () => _choose(AccountRole.designer),
+                    child: const Text('Apply as designer'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

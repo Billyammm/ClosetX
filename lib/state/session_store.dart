@@ -30,6 +30,7 @@ class SessionStore extends ChangeNotifier {
   Brand? _brand;
   bool _isLoading = false;
   Object? _loadError;
+  bool _needsGoogleRoleSelection = false;
 
   bool get isSignedIn => _userId != null;
   bool get isLoading => _isLoading;
@@ -39,6 +40,7 @@ class SessionStore extends ChangeNotifier {
   Brand? get brand => _brand;
   bool get isDesigner => _profile?.isApprovedDesigner ?? false;
   bool get isShopper => _profile?.role == AccountRole.shopper;
+  bool get needsGoogleRoleSelection => _needsGoogleRoleSelection;
 
   Future<void> ensureProfileLoaded() async {
     if (_userId != null && _profile == null) await refresh();
@@ -47,6 +49,12 @@ class SessionStore extends ChangeNotifier {
   Future<void> _syncUser(User? user) async {
     if (user?.id == _userId) return;
     _userId = user?.id;
+    _needsGoogleRoleSelection =
+        user != null &&
+        (user.appMetadata['provider'] == 'google' ||
+            user.identities?.any((identity) => identity.provider == 'google') ==
+                true) &&
+        user.userMetadata?['closetx_role_initialized'] != true;
     _profile = null;
     _brand = null;
     notifyListeners();
@@ -94,6 +102,32 @@ class SessionStore extends ChangeNotifier {
     await ensureProfileLoaded();
   }
 
+  Future<void> signInWithGoogle() async {
+    await _client.auth.signInWithOAuth(
+      OAuthProvider.google,
+      redirectTo: kIsWeb ? Uri.base.origin : 'closetx://login-callback/',
+      authScreenLaunchMode: LaunchMode.externalApplication,
+    );
+  }
+
+  Future<void> chooseGoogleRole(AccountRole role) async {
+    if (!_needsGoogleRoleSelection || _userId == null) {
+      throw const AuthException('This Google account has already been set up.');
+    }
+    if (role == AccountRole.designer) {
+      await _client.rpc(
+        'set_initial_google_role',
+        params: {'new_role': role.name},
+      );
+    }
+    await _client.auth.updateUser(
+      UserAttributes(data: {'closetx_role_initialized': true}),
+    );
+    _needsGoogleRoleSelection = false;
+    await refresh();
+    notifyListeners();
+  }
+
   Future<SignUpOutcome> signUp({
     required String email,
     required String password,
@@ -111,6 +145,26 @@ class SessionStore extends ChangeNotifier {
     await _syncUser(response.user);
     await ensureProfileLoaded();
     return SignUpOutcome.signedIn;
+  }
+
+  Future<void> signUpShopper({
+    required String email,
+    required String password,
+    required String fullName,
+  }) async {
+    final response = await _client.functions.invoke(
+      'create-shopper-account',
+      body: {'email': email, 'password': password, 'fullName': fullName},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final error = response.data is Map ? response.data['error'] : null;
+      throw AuthException(
+        error is String && error.isNotEmpty
+            ? error
+            : 'Could not create the shopper account.',
+      );
+    }
+    await signIn(email: email, password: password);
   }
 
   Future<void> signOut() async {

@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/closetx_repository.dart';
 import '../models/garment.dart';
@@ -19,16 +22,42 @@ class DiscoverScreen extends StatefulWidget {
 
 class _DiscoverScreenState extends State<DiscoverScreen> {
   String _category = 'All';
-  _DesignSort _designSort = _DesignSort.newest;
   final _repository = ClosetXRepository();
   String? _savedOwnerKey;
+  RealtimeChannel? _designChangesChannel;
+  Timer? _catalogRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     if (isSupabaseConfigured) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadDesigns());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _loadDesigns();
+        _subscribeToDesignChanges();
+      });
     }
+  }
+
+  void _subscribeToDesignChanges() {
+    _designChangesChannel = _repository.subscribeToDesignChanges(
+      onChange: _scheduleCatalogRefresh,
+      onStatus: (status, error) {
+        if (status == RealtimeSubscribeStatus.subscribed) {
+          _scheduleCatalogRefresh();
+        } else if (status == RealtimeSubscribeStatus.channelError ||
+            status == RealtimeSubscribeStatus.timedOut) {
+          debugPrint('Design catalog realtime subscription failed: $error');
+        }
+      },
+    );
+  }
+
+  void _scheduleCatalogRefresh() {
+    _catalogRefreshTimer?.cancel();
+    _catalogRefreshTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) unawaited(_loadDesigns());
+    });
   }
 
   @override
@@ -77,6 +106,16 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   @override
+  void dispose() {
+    _catalogRefreshTimer?.cancel();
+    final channel = _designChangesChannel;
+    if (channel != null) {
+      unawaited(_repository.removeDesignChangesSubscription(channel));
+    }
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final store = ClosetStoreScope.of(context);
     final isLoadingDatabase = store.isLoadingCatalog;
@@ -91,18 +130,16 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       for (final entry in allGarments.asMap().entries)
         entry.value.id: entry.key,
     };
-    int compareByPopularity(Garment first, Garment second) {
-      final countComparison = second.saveCount.compareTo(first.saveCount);
-      return countComparison != 0
-          ? countComparison
+    int compareFeatured(Garment first, Garment second) {
+      final firstScore = first.ratingAverage * 20 + first.saveCount;
+      final secondScore = second.ratingAverage * 20 + second.saveCount;
+      final scoreComparison = secondScore.compareTo(firstScore);
+      return scoreComparison != 0
+          ? scoreComparison
           : newestOrder[first.id]!.compareTo(newestOrder[second.id]!);
     }
 
-    final featuredGarments = [...garments]..sort(compareByPopularity);
-    final browseGarments = [...garments];
-    if (_designSort == _DesignSort.mostSaved) {
-      browseGarments.sort(compareByPopularity);
-    }
+    final featuredGarments = [...garments]..sort(compareFeatured);
 
     return CustomScrollView(
       key: const PageStorageKey('showroom'),
@@ -123,6 +160,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   ),
                   icon: const Icon(Icons.search_rounded),
                 ),
+                if (SessionScope.of(context).profile?.isDesigner == true)
+                  const ApplicationStatusButton(),
                 CartCountButton(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(builder: (_) => const CartScreen()),
@@ -208,10 +247,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text('Most saved designs', style: headingStyle(21)),
+                  child: Text('Featured designs', style: headingStyle(21)),
                 ),
                 Text(
-                  isLoadingDatabase ? 'Loading...' : 'Popular with shoppers',
+                  isLoadingDatabase ? 'Loading...' : 'Top rated and saved',
                   style: const TextStyle(color: muted, fontSize: 12),
                 ),
               ],
@@ -252,41 +291,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             ),
           )
         else ...[
-          _designGrid(featuredGarments.take(4).toList()),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Browse all designs', style: headingStyle(21)),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      ChoiceChip(
-                        label: const Text('Newest uploads'),
-                        selected: _designSort == _DesignSort.newest,
-                        onSelected: (_) =>
-                            setState(() => _designSort = _DesignSort.newest),
-                      ),
-                      ChoiceChip(
-                        avatar: const Icon(
-                          Icons.favorite_border_rounded,
-                          size: 16,
-                        ),
-                        label: const Text('Most liked'),
-                        selected: _designSort == _DesignSort.mostSaved,
-                        onSelected: (_) =>
-                            setState(() => _designSort = _DesignSort.mostSaved),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          _designGrid(browseGarments),
+          _designGrid(featuredGarments.take(5).toList()),
         ],
       ],
     );
@@ -325,7 +330,84 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 }
 
-enum _DesignSort { newest, mostSaved }
+class ApplicationStatusButton extends StatelessWidget {
+  const ApplicationStatusButton({super.key});
+
+  Future<void> _showStatus(BuildContext context) async {
+    final session = SessionScope.of(context);
+    await session.refresh();
+    if (!context.mounted) return;
+    final profile = session.profile;
+    if (profile == null || !profile.isDesigner) return;
+    final isAccepted = profile.designerStatus == 'approved';
+    final isDeclined = profile.designerStatus == 'rejected';
+    if (!isAccepted && !isDeclined) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              isAccepted
+                  ? Icons.check_circle_outline_rounded
+                  : Icons.cancel_outlined,
+              color: isAccepted ? accent : Colors.red.shade700,
+            ),
+            const SizedBox(width: 10),
+            Text(isAccepted ? 'Application accepted' : 'Application declined'),
+          ],
+        ),
+        content: Text(
+          isAccepted
+              ? 'Your designer application was accepted. You can now manage your brand and upload designs.'
+              : profile.designerRejectionReason?.trim().isNotEmpty == true
+              ? profile.designerRejectionReason!
+              : 'Your designer application was not approved at this time.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = SessionScope.of(context).profile;
+    final hasDecision =
+        profile?.designerStatus == 'approved' ||
+        profile?.designerStatus == 'rejected';
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          tooltip: 'Application status',
+          onPressed: hasDecision ? () => _showStatus(context) : null,
+          icon: const Icon(Icons.notifications_none_rounded),
+        ),
+        if (hasDecision)
+          Positioned(
+            top: 9,
+            right: 9,
+            child: IgnorePointer(
+              child: Container(
+                width: 7,
+                height: 7,
+                decoration: const BoxDecoration(
+                  color: accent,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
 
 class _CatalogError extends StatelessWidget {
   const _CatalogError({required this.message, required this.onRetry});

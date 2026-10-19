@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/account.dart';
 import '../models/garment.dart';
+import '../data/closetx_repository.dart';
 import '../state/closet_store.dart';
 import '../state/session_store.dart';
 import '../theme.dart';
@@ -11,7 +12,9 @@ import 'account_screens.dart';
 import 'tryon_screen.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({this.isBrowse = false, super.key});
+
+  final bool isBrowse;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -44,7 +47,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Search the edit'),
+        title: Text(widget.isBrowse ? 'Browse designs' : 'Search the edit'),
         actions: [
           CartCountButton(
             onPressed: () => Navigator.of(
@@ -59,7 +62,7 @@ class _SearchScreenState extends State<SearchScreen> {
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
             child: TextField(
               controller: _searchController,
-              autofocus: true,
+              autofocus: !widget.isBrowse,
               onChanged: (_) => setState(() {}),
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
@@ -150,6 +153,9 @@ class ProductDetailScreen extends StatefulWidget {
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   int _quantity = 1;
+  final _repository = ClosetXRepository();
+  List<DesignReview> _reviews = const [];
+  bool _reviewsLoading = false;
 
   void _openTryOn(Garment garment, TryOnMode mode) {
     Navigator.of(context).push(
@@ -157,6 +163,184 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         builder: (_) => TryOnScreen(garment: garment, initialMode: mode),
       ),
     );
+  }
+
+  Future<void> _addToBag() async {
+    final session = SessionScope.of(context);
+    if (!session.isSignedIn) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (routeContext) => LoginScreen(
+            shopperOnly: true,
+            onContinue: () => Navigator.of(routeContext).pop(),
+          ),
+        ),
+      );
+      if (!mounted || !session.isSignedIn) return;
+    }
+
+    await session.ensureProfileLoaded();
+    if (!mounted) return;
+    if (session.loadError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not verify your shopper account.')),
+      );
+      return;
+    }
+    if (!session.isShopper) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign in with a shopper account to add items.'),
+        ),
+      );
+      return;
+    }
+
+    final store = ClosetStoreScope.of(context);
+    store.addToCart(widget.garment, quantity: _quantity);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Expanded(child: Text('${widget.garment.name} added to your bag')),
+            TextButton(
+              onPressed: () {
+                messenger.hideCurrentSnackBar();
+                navigator.push(
+                  MaterialPageRoute<void>(builder: (_) => const CartScreen()),
+                );
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.onInverseSurface,
+              ),
+              child: const Text('VIEW BAG'),
+            ),
+          ],
+        ),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  String? get _designId {
+    const prefix = 'supabase:';
+    return widget.garment.id.startsWith(prefix)
+        ? widget.garment.id.substring(prefix.length)
+        : null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (_designId != null) _loadReviews();
+  }
+
+  Future<void> _loadReviews() async {
+    setState(() => _reviewsLoading = true);
+    try {
+      final reviews = await _repository.loadDesignReviews(_designId!);
+      if (mounted) setState(() => _reviews = reviews);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reviews are temporarily unavailable.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _reviewsLoading = false);
+    }
+  }
+
+  Future<void> _openReviewComposer() async {
+    final session = SessionScope.of(context);
+    if (!session.isSignedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign in to rate and comment on a design.'),
+        ),
+      );
+      return;
+    }
+    final existing = _reviews.where((review) => review.isMine).firstOrNull;
+    var rating = existing?.rating ?? 5;
+    final controller = TextEditingController(text: existing?.comment ?? '');
+    final result = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(
+            existing == null ? 'Rate this design' : 'Edit your review',
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Wrap(
+                spacing: 2,
+                children: [
+                  for (var value = 1; value <= 5; value++)
+                    IconButton(
+                      tooltip: '$value star${value == 1 ? '' : 's'}',
+                      onPressed: () => setDialogState(() => rating = value),
+                      icon: Icon(
+                        value <= rating
+                            ? Icons.star_rounded
+                            : Icons.star_border_rounded,
+                        color: accent,
+                      ),
+                    ),
+                ],
+              ),
+              TextField(
+                controller: controller,
+                maxLines: 4,
+                maxLength: 500,
+                decoration: const InputDecoration(
+                  labelText: 'Comment',
+                  hintText: 'What do you think about this design?',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (controller.text.trim().isEmpty) return;
+                Navigator.of(dialogContext).pop(rating);
+              },
+              child: const Text('Submit'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null || !mounted) {
+      controller.dispose();
+      return;
+    }
+    try {
+      await _repository.submitDesignReview(
+        designId: _designId!,
+        rating: result,
+        comment: controller.text,
+      );
+      await _loadReviews();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not save your review right now.'),
+          ),
+        );
+      }
+    } finally {
+      controller.dispose();
+    }
   }
 
   @override
@@ -186,6 +370,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => const CartScreen()),
                 ),
+              ),
+              IconButton(
+                tooltip: 'Rate this design',
+                onPressed: _designId == null ? null : _openReviewComposer,
+                icon: const Icon(Icons.rate_review_outlined, color: ink),
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
@@ -241,6 +430,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ],
                   ),
                   const SizedBox(height: 18),
+                  _DesignReviews(
+                    reviews: _reviews,
+                    isLoading: _reviewsLoading,
+                    onReview: _designId == null ? null : _openReviewComposer,
+                  ),
+                  const SizedBox(height: 22),
                   Text(
                     garment.description,
                     style: const TextStyle(
@@ -283,41 +478,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: () {
-                        store.addToCart(garment, quantity: _quantity);
-                        final navigator = Navigator.of(context);
-                        final messenger = ScaffoldMessenger.of(context);
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    '${garment.name} added to your bag',
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    messenger.hideCurrentSnackBar();
-                                    navigator.push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => const CartScreen(),
-                                      ),
-                                    );
-                                  },
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Theme.of(
-                                      context,
-                                    ).colorScheme.onInverseSurface,
-                                  ),
-                                  child: const Text('VIEW BAG'),
-                                ),
-                              ],
-                            ),
-                            duration: const Duration(seconds: 4),
-                          ),
-                        );
-                      },
+                      onPressed: _addToBag,
                       icon: const Icon(Icons.shopping_bag_outlined),
                       label: const Text('Add to bag'),
                       style: FilledButton.styleFrom(
@@ -365,6 +526,121 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DesignReviews extends StatelessWidget {
+  const _DesignReviews({
+    required this.reviews,
+    required this.isLoading,
+    required this.onReview,
+  });
+
+  final List<DesignReview> reviews;
+  final bool isLoading;
+  final VoidCallback? onReview;
+
+  @override
+  Widget build(BuildContext context) {
+    final average = reviews.isEmpty
+        ? 0
+        : reviews.map((review) => review.rating).reduce((a, b) => a + b) /
+              reviews.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              'Reviews',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(width: 10),
+            if (reviews.isNotEmpty) ...[
+              const Icon(Icons.star_rounded, size: 18, color: accent),
+              const SizedBox(width: 3),
+              Text(
+                '${average.toStringAsFixed(1)} (${reviews.length})',
+                style: const TextStyle(color: muted, fontSize: 13),
+              ),
+            ],
+            const Spacer(),
+            TextButton.icon(
+              onPressed: onReview,
+              icon: const Icon(Icons.rate_review_outlined, size: 18),
+              label: Text(
+                reviews.any((review) => review.isMine) ? 'Edit' : 'Review',
+              ),
+            ),
+          ],
+        ),
+        if (isLoading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (reviews.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text(
+              'No reviews yet. Be the first to share what you think.',
+              style: TextStyle(color: muted, height: 1.45),
+            ),
+          )
+        else
+          ...reviews
+              .take(3)
+              .map(
+                (review) => Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: paper,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: line),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  review.authorName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              Row(
+                                children: [
+                                  for (var star = 1; star <= 5; star++)
+                                    Icon(
+                                      star <= review.rating
+                                          ? Icons.star_rounded
+                                          : Icons.star_border_rounded,
+                                      size: 16,
+                                      color: accent,
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            review.comment,
+                            style: const TextStyle(color: muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+      ],
     );
   }
 }
@@ -696,6 +972,8 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = ClosetStoreScope.of(context);
     final session = SessionScope.of(context);
+    final isDesigner = session.profile?.isDesigner == true;
+    final brand = session.brand;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 28, 20, 30),
       children: [
@@ -715,24 +993,49 @@ class ProfileScreen extends StatelessWidget {
         if (session.profile?.isDesigner == true)
           _DesignerSection(profile: session.profile!),
         const SizedBox(height: 12),
-        _ProfileOption(
-          icon: Icons.bookmark_border_rounded,
-          title: 'Saved pieces',
-          subtitle: '${store.savedGarments.length} in your edit',
-          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Open Saved from the bottom navigation.'),
+        if (isDesigner) ...[
+          if (brand != null)
+            _ProfileOption(
+              icon: Icons.storefront_outlined,
+              title: 'Brand profile',
+              subtitle: 'Edit your brand information and logo',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const BrandEditorScreen(),
+                ),
+              ),
+            ),
+          if (session.profile?.isApprovedDesigner == true)
+            _ProfileOption(
+              icon: Icons.checkroom_outlined,
+              title: 'My Designs',
+              subtitle: 'Manage your uploaded designs',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const DesignerStudioScreen(),
+                ),
+              ),
+            ),
+        ] else ...[
+          _ProfileOption(
+            icon: Icons.bookmark_border_rounded,
+            title: 'Saved pieces',
+            subtitle: '${store.savedGarments.length} in your edit',
+            onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Open Saved from the bottom navigation.'),
+              ),
             ),
           ),
-        ),
-        _ProfileOption(
-          icon: Icons.shopping_bag_outlined,
-          title: 'Shopping bag',
-          subtitle: '${store.cartCount} pieces',
-          onTap: () => Navigator.of(
-            context,
-          ).push(MaterialPageRoute<void>(builder: (_) => const CartScreen())),
-        ),
+          _ProfileOption(
+            icon: Icons.shopping_bag_outlined,
+            title: 'Shopping bag',
+            subtitle: '${store.cartCount} pieces',
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => const CartScreen())),
+          ),
+        ],
         _ProfileOption(
           icon: Icons.eco_outlined,
           title: 'Our local edit',
@@ -752,8 +1055,10 @@ class ProfileScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 15),
-        const Text(
-          'Saved pieces and your bag are kept for this session only.',
+        Text(
+          isDesigner
+              ? 'Application status updates appear in the notification icon.'
+              : 'Saved pieces and your bag are kept for this session only.',
           style: TextStyle(color: muted, fontSize: 11, height: 1.5),
         ),
       ],
@@ -799,6 +1104,39 @@ class _ProfileOption extends StatelessWidget {
 
 class _AccountCard extends StatelessWidget {
   const _AccountCard();
+
+  Future<void> _confirmSignOut(BuildContext context) async {
+    final shouldSignOut = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text(
+          'Are you sure you want to sign out of your ClosetX account?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (shouldSignOut != true || !context.mounted) return;
+
+    try {
+      await SessionScope.of(context).signOut();
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not sign out: $error')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -873,7 +1211,7 @@ class _AccountCard extends StatelessWidget {
           if (signedIn)
             IconButton(
               tooltip: 'Sign out',
-              onPressed: () => session.signOut(),
+              onPressed: () => _confirmSignOut(context),
               icon: const Icon(Icons.logout_rounded, color: muted),
             )
           else

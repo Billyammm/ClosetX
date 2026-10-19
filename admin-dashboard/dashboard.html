@@ -56,7 +56,7 @@
 
                 <button onclick="showSection('pending')" id="nav-pending" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
                     <i class="fas fa-images"></i>
-                    <span>Design approvals</span>
+                    <span>Design Overview</span>
                     <span id="pending-badge" class="nav-count">0</span>
                 </button>
 
@@ -143,8 +143,8 @@
                     <h2 id="page-title" class="text-3xl font-bold text-gray-900 mb-1">Overview</h2>
                     <p id="page-subtitle" class="text-gray-600">Dashboard analytics and insights</p>
                 </div>
-                <button onclick="refreshData()" class="refresh-button flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 border border-gray-200 rounded-lg transition-all font-semibold">
-                    <i class="fas fa-sync-alt"></i>
+                <button id="refresh-dashboard" type="button" onclick="refreshData()" class="refresh-button flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 border border-gray-200 rounded-lg transition-all font-semibold" aria-label="Refresh dashboard">
+                    <i class="fas fa-sync-alt" aria-hidden="true"></i>
                     <span>Refresh</span>
                 </button>
             </header>
@@ -203,10 +203,10 @@
             <div id="pending-section" class="section hidden">
                 <div class="section-toolbar">
                     <div class="filter-tabs" role="tablist" aria-label="Filter asset requests">
-                        <button type="button" class="filter-tab active" data-design-filter="pending">Pending <span id="pending-filter-count">0</span></button>
                         <button type="button" class="filter-tab" data-design-filter="all">All assets <span id="design-all-filter-count">0</span></button>
                         <button type="button" class="filter-tab" data-design-filter="approved">Approved <span id="design-approved-filter-count">0</span></button>
                         <button type="button" class="filter-tab" data-design-filter="rejected">Declined <span id="design-rejected-filter-count">0</span></button>
+                        <button type="button" class="filter-tab active" data-design-filter="pending">Pending <span id="pending-filter-count">0</span></button>
                     </div>
                     <div class="flex flex-wrap items-center gap-3">
                         <label for="design-designer-filter" class="text-sm text-gray-500">Filter by designer</label>
@@ -226,10 +226,10 @@
             <div id="applications-section" class="section hidden">
                 <div class="section-toolbar">
                     <div class="filter-tabs" role="tablist" aria-label="Filter designer applications">
-                        <button type="button" class="filter-tab active" data-application-filter="pending">Pending <span id="application-filter-count">0</span></button>
                         <button type="button" class="filter-tab" data-application-filter="all">All applications <span id="application-all-filter-count">0</span></button>
                         <button type="button" class="filter-tab" data-application-filter="approved">Accepted <span id="application-approved-filter-count">0</span></button>
                         <button type="button" class="filter-tab" data-application-filter="rejected">Declined <span id="application-rejected-filter-count">0</span></button>
+                        <button type="button" class="filter-tab active" data-application-filter="pending">Pending <span id="application-filter-count">0</span></button>
                     </div>
                 </div>
                 <div id="applications-list" class="data-table-wrap"></div>
@@ -240,13 +240,33 @@
             </div>
 
             <div id="feedback-section" class="section hidden">
+                <div class="mb-6">
+                    <h3 class="text-xl font-bold text-gray-900">Design Reviews</h3>
+                    <p class="mt-1 text-sm text-gray-500">Ratings and comments about specific published designs.</p>
+                </div>
+                <div id="design-review-designers" class="mb-6"></div>
                 <div class="section-toolbar">
-                    <div class="filter-tabs" role="tablist" aria-label="Sort customer feedback">
-                        <button type="button" class="filter-tab active" data-feedback-filter="newest">Most recent</button>
-                        <button type="button" class="filter-tab" data-feedback-filter="highest">Highest rated</button>
-                        <button type="button" class="filter-tab" data-feedback-filter="lowest">Lowest rated</button>
+                    <div class="filter-tabs" role="tablist" aria-label="Sort design reviews">
+                        <button type="button" class="filter-tab active" data-design-review-sort="newest">Most recent</button>
+                        <button type="button" class="filter-tab" data-design-review-sort="highest">Highest rated</button>
+                        <button type="button" class="filter-tab" data-design-review-sort="lowest">Lowest rated</button>
                     </div>
                 </div>
+                <div id="design-reviews-error" class="hidden mb-4" role="alert"></div>
+                <div id="design-reviews-list" class="data-table-wrap"></div>
+
+                <div class="mb-6 mt-10">
+                    <h3 class="text-xl font-bold text-gray-900">App Feedback</h3>
+                    <p class="mt-1 text-sm text-gray-500">Feedback about the ClosetX application and overall shopping experience.</p>
+                </div>
+                <div class="section-toolbar">
+                    <div class="filter-tabs" role="tablist" aria-label="Sort app feedback">
+                        <button type="button" class="filter-tab active" data-app-feedback-sort="newest">Most recent</button>
+                        <button type="button" class="filter-tab" data-app-feedback-sort="highest">Highest rated</button>
+                        <button type="button" class="filter-tab" data-app-feedback-sort="lowest">Lowest rated</button>
+                    </div>
+                </div>
+                <div id="feedback-error" class="hidden mb-4" role="alert"></div>
                 <div id="feedback-list" class="data-table-wrap"></div>
             </div>
         </main>
