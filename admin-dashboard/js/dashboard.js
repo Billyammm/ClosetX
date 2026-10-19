@@ -1,11 +1,16 @@
 let allDesigns = [];
 let allDesigners = [];
 let allFeedback = [];
+let allDesignReviews = [];
+let feedbackError = null;
+let designReviewsError = null;
 let currentSection = 'overview';
 let designFilter = 'pending';
 let designDesignerFilter = 'all';
 let applicationFilter = 'pending';
 let feedbackSort = 'newest';
+let designReviewSort = 'newest';
+let selectedReviewDesignerId = 'all';
 let notificationSort = 'all';
 
 function escapeHtml(value) {
@@ -150,11 +155,18 @@ function bindDashboardControls() {
             renderApplications();
         });
     });
-    document.querySelectorAll('[data-feedback-filter]').forEach((button) => {
+    document.querySelectorAll('[data-app-feedback-sort]').forEach((button) => {
         button.addEventListener('click', () => {
-            feedbackSort = button.dataset.feedbackFilter;
-            document.querySelectorAll('[data-feedback-filter]').forEach((tab) => tab.classList.toggle('active', tab === button));
+            feedbackSort = button.dataset.appFeedbackSort;
+            document.querySelectorAll('[data-app-feedback-sort]').forEach((tab) => tab.classList.toggle('active', tab === button));
             renderFeedback();
+        });
+    });
+    document.querySelectorAll('[data-design-review-sort]').forEach((button) => {
+        button.addEventListener('click', () => {
+            designReviewSort = button.dataset.designReviewSort;
+            document.querySelectorAll('[data-design-review-sort]').forEach((tab) => tab.classList.toggle('active', tab === button));
+            renderDesignReviews();
         });
     });
     for (const modalId of ['approvalModal', 'applicationModal']) {
@@ -184,12 +196,25 @@ function applyCurrentSearch() {
 async function loadDashboard() {
     clearDashboardError();
     try {
-        const [, , , saveCounts] = await Promise.all([
+        feedbackError = null;
+        designReviewsError = null;
+        const [, , appFeedbackResult, saveCounts] = await Promise.all([
             loadDesigns(),
             loadDesigners(),
-            loadFeedback(),
+            loadFeedback().then(() => ({ success: true })).catch((error) => ({ success: false, error })),
             loadDesignSaveCounts(),
         ]);
+        if (!appFeedbackResult.success) {
+            feedbackError = appFeedbackResult.error;
+            console.error('Could not load app feedback:', appFeedbackResult.error);
+        }
+        const designReviewsResult = await loadDesignReviews()
+            .then(() => ({ success: true }))
+            .catch((error) => ({ success: false, error }));
+        if (!designReviewsResult.success) {
+            designReviewsError = designReviewsResult.error;
+            console.error('Could not load design reviews:', designReviewsResult.error);
+        }
         allDesigns = allDesigns.map((design) => ({
             ...design,
             save_count: saveCounts.get(design.id) || 0,
@@ -263,12 +288,26 @@ async function loadDesigners() {
 }
 
 async function loadFeedback() {
+    allFeedback = [];
     const { data, error } = await closetxSupabase
         .from('feedback')
         .select('id, user_id, author_name, author_email, message, rating, created_at')
         .order('created_at', { ascending: false });
     if (error) throw new Error(`Could not load customer feedback: ${error.message}`);
     allFeedback = data || [];
+}
+
+async function loadDesignReviews() {
+    allDesignReviews = [];
+    const { data, error } = await closetxSupabase
+        .from('design_reviews')
+        .select('id, design_id, user_id, author_name, rating, comment, created_at, profiles(full_name, email)')
+        .order('created_at', { ascending: false });
+    if (error) throw new Error(`Could not load design reviews: ${error.message}`);
+    const designsById = new Map(allDesigns.map((design) => [design.id, design]));
+    allDesignReviews = (data || [])
+        .map((review) => ({ ...review, design: designsById.get(review.design_id) }))
+        .filter((review) => review.design?.is_published);
 }
 
 function renderStats() {
@@ -394,12 +433,20 @@ function renderNotifications() {
             const section = button.dataset.notifySection;
             const id = button.dataset.notifyId;
             if (section === 'applications') {
-                applicationFilter = 'pending';
                 showSection('applications');
+                applicationFilter = 'pending';
+                document.querySelectorAll('[data-application-filter]').forEach((tab) => {
+                    tab.classList.toggle('active', tab.dataset.applicationFilter === applicationFilter);
+                });
+                renderApplications();
                 openApplication(id);
             } else {
-                designFilter = 'pending';
                 showSection('pending');
+                designFilter = 'pending';
+                document.querySelectorAll('[data-design-filter]').forEach((tab) => {
+                    tab.classList.toggle('active', tab.dataset.designFilter === designFilter);
+                });
+                renderPendingDesigns();
                 openDesignReview(id);
             }
             document.getElementById('notification-panel')?.classList.add('hidden');
@@ -428,6 +475,18 @@ function statusPill(status) {
 
 function showSection(section) {
     currentSection = section;
+    if (section === 'pending') {
+        designFilter = 'all';
+        document.querySelectorAll('[data-design-filter]').forEach((tab) => {
+            tab.classList.toggle('active', tab.dataset.designFilter === designFilter);
+        });
+    }
+    if (section === 'applications') {
+        applicationFilter = 'all';
+        document.querySelectorAll('[data-application-filter]').forEach((tab) => {
+            tab.classList.toggle('active', tab.dataset.applicationFilter === applicationFilter);
+        });
+    }
     document.querySelectorAll('.nav-item').forEach((item) => item.classList.remove('active'));
     document.getElementById(`nav-${section}`)?.classList.add('active');
     document.querySelectorAll('.section').forEach((item) => item.classList.add('hidden'));
@@ -436,7 +495,7 @@ function showSection(section) {
         pending: ['Design approvals', 'Review and approve designer uploads'],
         applications: ['Designer applications', 'Accept or deny requests to join ClosetX as a designer'],
         designers: ['Designers', 'Accepted designer accounts'],
-        feedback: ['Customer feedback', 'Feedback submitted from the ClosetX app'],
+        feedback: ['Feedback', 'App feedback and design reviews'],
         favorites: ['Shopper saves', 'See how many shoppers saved each design'],
     };
     if (!titles[section]) return;
@@ -745,13 +804,108 @@ function renderFeedback() {
         if (feedbackSort === 'lowest') return (a.rating || 0) - (b.rating || 0);
         return new Date(b.created_at) - new Date(a.created_at);
     });
-    document.getElementById('feedback-list').innerHTML = feedback.length ? `
+    const errorElement = document.getElementById('feedback-error');
+    errorElement.classList.toggle('hidden', !feedbackError);
+    errorElement.innerHTML = feedbackError
+        ? `<div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">${escapeHtml(feedbackError.message)}</div>`
+        : '';
+    document.getElementById('feedback-list').innerHTML = feedbackError ? '' : feedback.length ? `
         <div class="space-y-3">${feedback.map((item) => `<article data-searchable class="rounded-xl border border-gray-200 bg-white p-5">
             <div class="flex flex-wrap items-center justify-between gap-2"><strong>${escapeHtml(item.author_name || 'ClosetX shopper')}</strong><span class="text-sm text-gray-500">${escapeHtml(formatDate(item.created_at))}</span></div>
             ${item.author_email ? `<p class="mt-1 text-sm text-gray-500">${escapeHtml(item.author_email)}</p>` : ''}
             ${item.rating ? `<p class="mt-2 text-amber-600" aria-label="${escapeHtml(item.rating)} out of 5 stars">${'★'.repeat(item.rating)}${'☆'.repeat(5 - item.rating)}</p>` : ''}
             <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">${escapeHtml(item.message)}</p>
-        </article>`).join('')}</div>` : '<div class="empty-state"><span class="empty-state-icon"><i class="far fa-comment-dots"></i></span><h3>No feedback yet</h3><p>Feedback submitted from the app will appear here.</p></div>';
+        </article>`).join('')}</div>` : '<div class="empty-state"><span class="empty-state-icon"><i class="far fa-comment-dots"></i></span><h3>No app feedback yet.</h3><p>Feedback submitted about the ClosetX app will appear here.</p></div>';
+    renderDesignReviews();
+}
+
+function renderDesignReviews() {
+    const reviews = [...allDesignReviews].sort((a, b) => {
+        if (designReviewSort === 'highest') return (b.rating || 0) - (a.rating || 0);
+        if (designReviewSort === 'lowest') return (a.rating || 0) - (b.rating || 0);
+        return new Date(b.created_at) - new Date(a.created_at);
+    });
+    const errorElement = document.getElementById('design-reviews-error');
+    errorElement.classList.toggle('hidden', !designReviewsError);
+    errorElement.innerHTML = designReviewsError
+        ? `<div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">${escapeHtml(designReviewsError.message)}</div>`
+        : '';
+    const publishedDesigns = allDesigns.filter((design) => design.is_published);
+    const designerGroups = new Map();
+    publishedDesigns.forEach((design) => {
+        const designerId = design.designer_id || design.brand_id || 'unknown';
+        const designerName = design.designer?.brand_name || design.brands?.name || 'ClosetX Designer';
+        if (!designerGroups.has(designerId)) {
+            designerGroups.set(designerId, { id: designerId, name: designerName, designs: [] });
+        }
+        designerGroups.get(designerId).designs.push(design);
+    });
+    const designers = [...designerGroups.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const designerList = document.getElementById('design-review-designers');
+    designerList.innerHTML = designers.length ? `
+        <div class="rounded-xl border border-gray-200 bg-white p-4">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                    <h4 class="font-bold text-gray-900">Designers</h4>
+                    <p class="mt-1 text-sm text-gray-500">Select a designer to view their published designs and reviews.</p>
+                </div>
+                <span class="text-sm text-gray-500">${designers.length} designer${designers.length === 1 ? '' : 's'}</span>
+            </div>
+            <div class="flex flex-wrap gap-2" role="list" aria-label="Designers with published designs">
+                <button type="button" class="filter-tab ${selectedReviewDesignerId === 'all' ? 'active' : ''}" data-review-designer="all">All designers</button>
+                ${designers.map((designer) => `<button type="button" class="filter-tab ${selectedReviewDesignerId === designer.id ? 'active' : ''}" data-review-designer="${escapeHtml(designer.id)}">${escapeHtml(designer.name)} <span>${designer.designs.length}</span></button>`).join('')}
+            </div>
+        </div>` : '<div class="empty-state"><span class="empty-state-icon"><i class="fas fa-users"></i></span><h3>No published designer designs yet.</h3><p>Published designs will appear here when designers are approved and their designs are published.</p></div>';
+    designerList.querySelectorAll('[data-review-designer]').forEach((button) => {
+        button.addEventListener('click', () => {
+            selectedReviewDesignerId = button.dataset.reviewDesigner;
+            renderDesignReviews();
+        });
+    });
+
+    const selectedGroups = selectedReviewDesignerId === 'all'
+        ? designers
+        : designers.filter((designer) => designer.id === selectedReviewDesignerId);
+    const reviewByDesign = new Map();
+    reviews.forEach((review) => {
+        if (!reviewByDesign.has(review.design_id)) reviewByDesign.set(review.design_id, []);
+        reviewByDesign.get(review.design_id).push(review);
+    });
+    const cards = selectedGroups.flatMap((designer) => designer.designs.map((design) => {
+        const designReviews = reviewByDesign.get(design.id) || [];
+        const designTitle = design.title || 'Untitled design';
+        return `<article data-searchable class="rounded-xl border border-gray-200 bg-white p-5">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h4 class="text-lg font-bold text-gray-900">${escapeHtml(designTitle)}</h4>
+                    <p class="mt-1 text-sm text-gray-500">By ${escapeHtml(designer.name)}</p>
+                </div>
+                <span class="status-pill status-approved">Published</span>
+            </div>
+            <div class="mt-5 border-t border-gray-100 pt-4">
+                <h5 class="text-sm font-bold uppercase tracking-wide text-gray-500">Reviews (${designReviews.length})</h5>
+                ${designReviews.length ? `<div class="mt-3 space-y-3">${designReviews.map((review) => {
+                    const profile = review.profiles || {};
+                    const reviewerName = review.author_name || profile.full_name || 'ClosetX shopper';
+                    return `<div class="rounded-xl bg-gray-50 p-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <strong class="text-sm text-gray-800">${escapeHtml(reviewerName)}</strong>
+                            <span class="text-sm text-gray-500">${escapeHtml(formatDate(review.created_at))}</span>
+                        </div>
+                        <div class="mt-2 flex flex-wrap items-center gap-3">
+                            <span class="text-amber-600" aria-label="${escapeHtml(review.rating)} out of 5 stars">${'★'.repeat(review.rating || 0)}${'☆'.repeat(5 - (review.rating || 0))}</span>
+                            ${profile.email ? `<span class="text-sm text-gray-500">${escapeHtml(profile.email)}</span>` : ''}
+                        </div>
+                        <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">${escapeHtml(review.comment)}</p>
+                    </div>`;
+                }).join('')}</div>` : '<p class="mt-3 text-sm text-gray-500">No reviews for this design yet.</p>'}
+            </div>
+        </article>`;
+    }));
+    document.getElementById('design-reviews-list').innerHTML = designReviewsError ? '' : cards.length
+        ? `<div class="grid grid-cols-1 gap-4">${cards.join('')}</div>`
+        : '<div class="empty-state"><span class="empty-state-icon"><i class="far fa-star"></i></span><h3>No published designs found for this designer.</h3><p>Select another designer to view their designs and reviews.</p></div>';
+    applyCurrentSearch();
 }
 
 function closeModal(id) {
