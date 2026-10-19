@@ -912,6 +912,10 @@ function renderDesignReviews() {
         designerGroups.get(designerId).designs.push(design);
     });
     const designers = [...designerGroups.values()].sort((a, b) => a.name.localeCompare(b.name));
+    if (selectedReviewDesignerId !== 'all'
+        && !designers.some((designer) => designer.id === selectedReviewDesignerId)) {
+        selectedReviewDesignerId = 'all';
+    }
     const designerList = document.getElementById('design-review-designers');
     designerList.replaceChildren();
     if (!designers.length) {
