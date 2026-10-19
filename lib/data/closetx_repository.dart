@@ -54,7 +54,8 @@ class ClosetXRepository {
   static const _designColumns =
       'id, designer_id, title, description, price, category, shirt_color, '
       'thumbnail_url, thumbnail_path, front_image_url, back_image_url, '
-      'front_image_path, back_image_path, is_published, brands(name, logo_url)';
+      'front_image_path, back_image_path, is_published, review_status, '
+      'rejection_reason, brands(name, logo_url)';
   static const _brandColumns = 'id, name, bio, location, logo_url, logo_path';
 
   SupabaseClient get _client {

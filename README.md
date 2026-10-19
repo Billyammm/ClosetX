@@ -92,6 +92,13 @@ It records each admin acceptance or rejection, lets the designer read and mark
 their own notifications, and enables Realtime updates for the notification
 badge. To also notify designers when a shopper saves one of their designs, run
 `supabase/migrations/20261019180000_designer_save_notifications.sql` after it.
+To notify designers when admins approve or decline submitted designs (including
+the decline reason), and to enforce that rejected designs remain unpublished,
+run `supabase/migrations/20261019190000_designer_design_review_notifications.sql`
+after those migrations. Then run
+`supabase/migrations/20261019200000_backfill_design_review_notifications.sql`
+to add unread notifications for prior design decisions whose review timestamp
+was recorded. Decisions without a review timestamp cannot be reconstructed.
 Existing applications with a recorded review timestamp receive one initial
 history entry; older decision history cannot be reconstructed from the current
 profile status alone.

@@ -70,6 +70,7 @@ class DesignerNotification {
   final String? designTitle;
 
   bool get isDesignSaved => type == 'design_saved';
+  bool get isDesignReviewDecision => type == 'design_review_decision';
   bool get isAccepted => status == 'approved';
 }
 

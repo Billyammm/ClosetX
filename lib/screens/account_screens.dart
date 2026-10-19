@@ -963,12 +963,11 @@ class _DesignerStudioScreenState extends State<DesignerStudioScreen> {
                             if (design.rejectionReason?.isNotEmpty == true) ...[
                               const SizedBox(height: 4),
                               Text(
-                                design.rejectionReason!,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
+                                'Reason: ${design.rejectionReason!}',
                                 style: TextStyle(
                                   color: Colors.red.shade700,
                                   fontSize: 11,
+                                  height: 1.35,
                                 ),
                               ),
                             ],

@@ -823,6 +823,8 @@ class _DesignerNotificationHistoryState
                       itemBuilder: (context, index) {
                         final notification = _notifications[index];
                         final isSaved = notification.isDesignSaved;
+                        final isDesignReview =
+                            notification.isDesignReviewDecision;
                         final accepted = notification.isAccepted;
                         return Material(
                           color: notification.isRead
@@ -866,6 +868,10 @@ class _DesignerNotificationHistoryState
                                         Text(
                                           isSaved
                                               ? 'A shopper saved your design'
+                                              : isDesignReview
+                                              ? accepted
+                                                    ? 'Your design was approved'
+                                                    : 'Your design was declined'
                                               : accepted
                                               ? 'Your designer application was accepted'
                                               : 'Your designer application was declined',
@@ -880,6 +886,10 @@ class _DesignerNotificationHistoryState
                                         Text(
                                           isSaved
                                               ? '“${notification.designTitle ?? 'Your design'}” was added to a shopper’s saved designs.'
+                                              : isDesignReview
+                                              ? accepted
+                                                    ? '“${notification.designTitle ?? 'Your design'}” was approved and is now available to shoppers.'
+                                                    : '“${notification.designTitle ?? 'Your design'}” was declined. Reason: ${notification.rejectionReason?.trim().isNotEmpty == true ? notification.rejectionReason! : 'No reason was provided.'}'
                                               : accepted
                                               ? 'You can now manage your brand and upload designs.'
                                               : notification.rejectionReason
