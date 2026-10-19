@@ -11,6 +11,7 @@ import '../supabase/supabase_config.dart';
 import '../theme.dart';
 import '../widgets/closet_widgets.dart';
 import '../widgets/tryon_view.dart';
+import 'tryon_screen.dart';
 
 String _friendlyError(Object error) {
   if (error is AuthException) return error.message;
@@ -816,6 +817,14 @@ class _DesignerStudioScreenState extends State<DesignerStudioScreen> {
     }
   }
 
+  void _openTryOn(DesignerDesign design, TryOnMode mode) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TryOnScreen(garment: design.garment, initialMode: mode),
+      ),
+    );
+  }
+
   Future<void> _delete(DesignerDesign design) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -897,108 +906,142 @@ class _DesignerStudioScreenState extends State<DesignerStudioScreen> {
                 itemBuilder: (context, index) {
                   final design = designs[index];
                   final garment = design.garment;
-                  return Row(
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(13),
-                        child: SizedBox(
-                          width: 76,
-                          height: 92,
-                          child: FashionImage(
-                            imageUrl: garment.imageUrl,
-                            background: garment.color,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(13),
+                            child: SizedBox(
+                              width: 76,
+                              height: 92,
+                              child: FashionImage(
+                                imageUrl: garment.imageUrl,
+                                background: garment.color,
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 13),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              garment.name,
-                              style: const TextStyle(
-                                color: ink,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${garment.formattedPrice} · ${garment.category}',
-                              style: const TextStyle(
-                                color: muted,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${design.saveCount} ${design.saveCount == 1 ? 'shopper' : 'shoppers'} saved this',
-                              style: const TextStyle(
-                                color: accent,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              design.reviewStatus == 'pending'
-                                  ? 'Pending admin review'
-                                  : design.reviewStatus == 'rejected'
-                                  ? 'Not approved'
-                                  : design.isPublished
-                                  ? 'Published'
-                                  : 'Hidden',
-                              style: TextStyle(
-                                color: design.reviewStatus == 'rejected'
-                                    ? Colors.red.shade700
-                                    : design.reviewStatus == 'approved' &&
-                                          design.isPublished
-                                    ? accent
-                                    : muted,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            if (design.rejectionReason?.isNotEmpty == true) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                'Reason: ${design.rejectionReason!}',
-                                style: TextStyle(
-                                  color: Colors.red.shade700,
-                                  fontSize: 11,
-                                  height: 1.35,
+                          const SizedBox(width: 13),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  garment.name,
+                                  style: const TextStyle(
+                                    color: ink,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${garment.formattedPrice} · ${garment.category}',
+                                  style: const TextStyle(
+                                    color: muted,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${design.saveCount} ${design.saveCount == 1 ? 'shopper' : 'shoppers'} saved this',
+                                  style: const TextStyle(
+                                    color: accent,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  design.reviewStatus == 'pending'
+                                      ? 'Pending admin review'
+                                      : design.reviewStatus == 'rejected'
+                                      ? 'Not approved'
+                                      : design.isPublished
+                                      ? 'Published'
+                                      : 'Hidden',
+                                  style: TextStyle(
+                                    color: design.reviewStatus == 'rejected'
+                                        ? Colors.red.shade700
+                                        : design.reviewStatus == 'approved' &&
+                                              design.isPublished
+                                        ? accent
+                                        : muted,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                if (design.rejectionReason?.isNotEmpty ==
+                                    true) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Reason: ${design.rejectionReason!}',
+                                    style: TextStyle(
+                                      color: Colors.red.shade700,
+                                      fontSize: 11,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          PopupMenuButton<String>(
+                            tooltip: 'Design options',
+                            onSelected: (value) {
+                              if (value == 'delete') {
+                                _delete(design);
+                              } else {
+                                _togglePublished(design);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              if (design.reviewStatus == 'approved')
+                                PopupMenuItem(
+                                  value: 'toggle',
+                                  child: Text(
+                                    design.isPublished
+                                        ? 'Hide from shop'
+                                        : 'Publish to shop',
+                                  ),
+                                ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Text('Delete'),
                               ),
                             ],
-                          ],
-                        ),
-                      ),
-                      PopupMenuButton<String>(
-                        tooltip: 'Design options',
-                        onSelected: (value) {
-                          if (value == 'delete') {
-                            _delete(design);
-                          } else {
-                            _togglePublished(design);
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          if (design.reviewStatus == 'approved')
-                            PopupMenuItem(
-                              value: 'toggle',
-                              child: Text(
-                                design.isPublished
-                                    ? 'Hide from shop'
-                                    : 'Publish to shop',
-                              ),
-                            ),
-                          const PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Delete'),
                           ),
                         ],
                       ),
+                      if (isTryOnSupported) ...[
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: () =>
+                                  _openTryOn(design, TryOnMode.viewer3d),
+                              icon: const Icon(
+                                Icons.view_in_ar_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('Preview in 3D'),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: () =>
+                                  _openTryOn(design, TryOnMode.camera),
+                              icon: const Icon(
+                                Icons.camera_alt_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('Try on'),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   );
                 },
