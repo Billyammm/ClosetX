@@ -230,6 +230,7 @@ class ClosetXRepository {
           'A design from the ClosetX community.',
       saveCount: saveCount,
       ratingAverage: ratingAverage,
+      designerId: _optionalString(row['designer_id']),
     );
   }
 
@@ -247,6 +248,55 @@ class ClosetXRepository {
         .eq('id', userId)
         .maybeSingle();
     return row == null ? null : UserProfile.fromRow(row);
+  }
+
+  Future<List<DesignerNotification>> loadDesignerNotifications(
+    String designerId,
+  ) async {
+    final rows = await _client
+        .from('designer_application_notifications')
+        .select(
+          'id, notification_type, status, rejection_reason, design_title, '
+          'created_at, is_read',
+        )
+        .eq('designer_id', designerId)
+        .order('created_at', ascending: false);
+    return rows.map(DesignerNotification.fromRow).toList(growable: false);
+  }
+
+  Future<void> markDesignerNotificationRead(String notificationId) async {
+    await _client
+        .from('designer_application_notifications')
+        .update({'is_read': true})
+        .eq('id', notificationId);
+  }
+
+  RealtimeChannel subscribeToDesignerNotifications({
+    required String designerId,
+    required VoidCallback onChange,
+    required void Function(RealtimeSubscribeStatus status, Object? error)
+    onStatus,
+  }) {
+    return _client
+        .channel('designer-application-notifications-$designerId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'designer_application_notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'designer_id',
+            value: designerId,
+          ),
+          callback: (_) => onChange(),
+        )
+        .subscribe(onStatus);
+  }
+
+  Future<void> removeDesignerNotificationsSubscription(
+    RealtimeChannel channel,
+  ) async {
+    await _client.removeChannel(channel);
   }
 
   Future<Brand?> loadBrandFor(String userId) async {

@@ -39,6 +39,40 @@ class UserProfile {
   String get displayName => fullName.trim().isEmpty ? email : fullName;
 }
 
+class DesignerNotification {
+  const DesignerNotification({
+    required this.id,
+    required this.type,
+    required this.createdAt,
+    required this.isRead,
+    this.status,
+    this.rejectionReason,
+    this.designTitle,
+  });
+
+  factory DesignerNotification.fromRow(Map<String, dynamic> row) =>
+      DesignerNotification(
+        id: row['id'] as String,
+        type: row['notification_type'] as String,
+        status: row['status'] as String?,
+        createdAt: DateTime.parse(row['created_at'] as String),
+        isRead: row['is_read'] as bool? ?? false,
+        rejectionReason: row['rejection_reason'] as String?,
+        designTitle: row['design_title'] as String?,
+      );
+
+  final String id;
+  final String type;
+  final String? status;
+  final DateTime createdAt;
+  final bool isRead;
+  final String? rejectionReason;
+  final String? designTitle;
+
+  bool get isDesignSaved => type == 'design_saved';
+  bool get isAccepted => status == 'approved';
+}
+
 class Brand {
   const Brand({
     required this.id,

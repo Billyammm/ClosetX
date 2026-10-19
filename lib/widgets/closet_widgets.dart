@@ -126,6 +126,7 @@ class GarmentCard extends StatelessWidget {
     required this.isSaved,
     required this.onSave,
     required this.onTap,
+    this.showSaveButton = true,
     super.key,
   });
 
@@ -133,6 +134,7 @@ class GarmentCard extends StatelessWidget {
   final bool isSaved;
   final VoidCallback onSave;
   final VoidCallback onTap;
+  final bool showSaveButton;
 
   @override
   Widget build(BuildContext context) {
@@ -185,28 +187,29 @@ class GarmentCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                Positioned(
-                  top: 9,
-                  right: 9,
-                  child: Material(
-                    color: Colors.white.withValues(alpha: 0.94),
-                    shape: const CircleBorder(),
-                    child: InkWell(
-                      onTap: onSave,
-                      customBorder: const CircleBorder(),
-                      child: Padding(
-                        padding: const EdgeInsets.all(7),
-                        child: Icon(
-                          isSaved
-                              ? Icons.bookmark_rounded
-                              : Icons.bookmark_border_rounded,
-                          color: isSaved ? accent : ink,
-                          size: 18,
+                if (showSaveButton)
+                  Positioned(
+                    top: 9,
+                    right: 9,
+                    child: Material(
+                      color: Colors.white.withValues(alpha: 0.94),
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        onTap: onSave,
+                        customBorder: const CircleBorder(),
+                        child: Padding(
+                          padding: const EdgeInsets.all(7),
+                          child: Icon(
+                            isSaved
+                                ? Icons.bookmark_rounded
+                                : Icons.bookmark_border_rounded,
+                            color: isSaved ? accent : ink,
+                            size: 18,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
                 Positioned(
                   left: 9,
                   bottom: 9,

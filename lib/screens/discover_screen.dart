@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/closetx_repository.dart';
+import '../models/account.dart';
 import '../models/garment.dart';
 import '../state/closet_store.dart';
 import '../state/session_store.dart';
@@ -161,7 +162,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   icon: const Icon(Icons.search_rounded),
                 ),
                 if (SessionScope.of(context).profile?.isDesigner == true)
-                  const ApplicationStatusButton(),
+                  const DesignerNotificationsButton(),
                 CartCountButton(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(builder: (_) => const CartScreen()),
@@ -330,81 +331,604 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 }
 
-class ApplicationStatusButton extends StatelessWidget {
-  const ApplicationStatusButton({super.key});
+class CommunityDesignsScreen extends StatefulWidget {
+  const CommunityDesignsScreen({super.key});
 
-  Future<void> _showStatus(BuildContext context) async {
-    final session = SessionScope.of(context);
-    await session.refresh();
-    if (!context.mounted) return;
-    final profile = session.profile;
-    if (profile == null || !profile.isDesigner) return;
-    final isAccepted = profile.designerStatus == 'approved';
-    final isDeclined = profile.designerStatus == 'rejected';
-    if (!isAccepted && !isDeclined) return;
+  @override
+  State<CommunityDesignsScreen> createState() => _CommunityDesignsScreenState();
+}
 
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(
-              isAccepted
-                  ? Icons.check_circle_outline_rounded
-                  : Icons.cancel_outlined,
-              color: isAccepted ? accent : Colors.red.shade700,
-            ),
-            const SizedBox(width: 10),
-            Text(isAccepted ? 'Application accepted' : 'Application declined'),
-          ],
-        ),
-        content: Text(
-          isAccepted
-              ? 'Your designer application was accepted. You can now manage your brand and upload designs.'
-              : profile.designerRejectionReason?.trim().isNotEmpty == true
-              ? profile.designerRejectionReason!
-              : 'Your designer application was not approved at this time.',
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Done'),
-          ),
-        ],
-      ),
-    );
+class _CommunityDesignsScreenState extends State<CommunityDesignsScreen> {
+  final _searchController = TextEditingController();
+  String _category = 'All';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _reload() {
+    return ClosetStoreScope.of(
+      context,
+    ).loadCatalog(ClosetXRepository().loadPublishedDesigns);
   }
 
   @override
   Widget build(BuildContext context) {
-    final profile = SessionScope.of(context).profile;
-    final hasDecision =
-        profile?.designerStatus == 'approved' ||
-        profile?.designerStatus == 'rejected';
+    final store = ClosetStoreScope.of(context);
+    final designerId = SessionScope.of(context).userId;
+    final query = _searchController.text.trim().toLowerCase();
+    final otherDesigns = store.garments.where((garment) {
+      return garment.designerId != null &&
+          garment.designerId != designerId &&
+          (_category == 'All' || garment.category == _category) &&
+          (query.isEmpty ||
+              garment.name.toLowerCase().contains(query) ||
+              garment.designer.toLowerCase().contains(query));
+    }).toList();
+    final categories =
+        store.garments
+            .where(
+              (garment) =>
+                  garment.designerId != null &&
+                  garment.designerId != designerId,
+            )
+            .map((garment) => garment.category)
+            .toSet()
+            .toList()
+          ..sort();
+
+    return CustomScrollView(
+      key: const PageStorageKey('designer-community'),
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'DESIGNER COMMUNITY',
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text('Explore other designers.', style: headingStyle(27)),
+                const SizedBox(height: 7),
+                const Text(
+                  'Browse published work from the ClosetX designer community and open a design to read its reviews.',
+                  style: TextStyle(color: muted, fontSize: 13, height: 1.45),
+                ),
+                const SizedBox(height: 17),
+                TextField(
+                  controller: _searchController,
+                  onChanged: (_) => setState(() {}),
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: 'Search designs or designers...',
+                    prefixIcon: const Icon(Icons.search_rounded, color: muted),
+                    suffixIcon: query.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (categories.isNotEmpty)
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 64,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (final category in ['All', ...categories])
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(category),
+                        selected: _category == category,
+                        onSelected: (_) => setState(() => _category = category),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        if (store.isLoadingCatalog)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (store.catalogError != null)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: _CatalogError(
+              message: '${store.catalogError}',
+              onRetry: _reload,
+            ),
+          )
+        else if (otherDesigns.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: EmptyState(
+              icon: Icons.groups_2_outlined,
+              title: query.isNotEmpty || _category != 'All'
+                  ? 'No matching designs'
+                  : 'No community designs yet',
+              message: query.isNotEmpty || _category != 'All'
+                  ? 'Try another search or category.'
+                  : 'Other designers’ published designs will appear here.',
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+            sliver: SliverGrid(
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final garment = otherDesigns[index];
+                return GarmentCard(
+                  garment: garment,
+                  isSaved: false,
+                  onSave: () {},
+                  showSaveButton: false,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => ProductDetailScreen(garment: garment),
+                    ),
+                  ),
+                );
+              }, childCount: otherDesigns.length),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 20,
+                childAspectRatio: 0.60,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class DesignerNotificationsButton extends StatefulWidget {
+  const DesignerNotificationsButton({super.key});
+
+  @override
+  State<DesignerNotificationsButton> createState() =>
+      _DesignerNotificationsButtonState();
+}
+
+class _DesignerNotificationsButtonState
+    extends State<DesignerNotificationsButton> {
+  final _repository = ClosetXRepository();
+  List<DesignerNotification> _notifications = const [];
+  RealtimeChannel? _channel;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadNotifications();
+      _subscribe();
+    });
+  }
+
+  void _subscribe() {
+    final designerId = SessionScope.of(context).userId;
+    if (designerId == null) return;
+    _channel = _repository.subscribeToDesignerNotifications(
+      designerId: designerId,
+      onChange: () => unawaited(_loadNotifications()),
+      onStatus: (status, error) {
+        if (status == RealtimeSubscribeStatus.subscribed) {
+          unawaited(_loadNotifications());
+        } else if (status == RealtimeSubscribeStatus.channelError ||
+            status == RealtimeSubscribeStatus.timedOut) {
+          debugPrint('Designer notification subscription failed: $error');
+        }
+      },
+    );
+  }
+
+  Future<void> _loadNotifications() async {
+    final designerId = SessionScope.of(context).userId;
+    if (designerId == null) return;
+    try {
+      final notifications = await _repository.loadDesignerNotifications(
+        designerId,
+      );
+      if (!mounted) return;
+      setState(() => _notifications = notifications);
+    } catch (error) {
+      if (!mounted) return;
+      debugPrint('Could not load designer notifications: $error');
+    }
+  }
+
+  Future<void> _openNotifications() async {
+    final designerId = SessionScope.of(context).userId;
+    if (designerId == null) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _DesignerNotificationHistory(
+        designerId: designerId,
+        repository: _repository,
+        onChanged: _loadNotifications,
+      ),
+    );
+    if (mounted) await _loadNotifications();
+  }
+
+  @override
+  void dispose() {
+    final channel = _channel;
+    if (channel != null) {
+      unawaited(_repository.removeDesignerNotificationsSubscription(channel));
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final unreadCount = _notifications.where((item) => !item.isRead).length;
     return Stack(
       clipBehavior: Clip.none,
       children: [
         IconButton(
-          tooltip: 'Application status',
-          onPressed: hasDecision ? () => _showStatus(context) : null,
+          tooltip: 'Notifications',
+          onPressed: _openNotifications,
           icon: const Icon(Icons.notifications_none_rounded),
         ),
-        if (hasDecision)
+        if (unreadCount > 0)
           Positioned(
-            top: 9,
-            right: 9,
+            top: 3,
+            right: 1,
             child: IgnorePointer(
               child: Container(
-                width: 7,
-                height: 7,
-                decoration: const BoxDecoration(
-                  color: accent,
-                  shape: BoxShape.circle,
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade700,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  unreadCount > 9 ? '9+' : '$unreadCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
           ),
       ],
+    );
+  }
+}
+
+class _DesignerNotificationHistory extends StatefulWidget {
+  const _DesignerNotificationHistory({
+    required this.designerId,
+    required this.repository,
+    required this.onChanged,
+  });
+
+  final String designerId;
+  final ClosetXRepository repository;
+  final Future<void> Function() onChanged;
+
+  @override
+  State<_DesignerNotificationHistory> createState() =>
+      _DesignerNotificationHistoryState();
+}
+
+class _DesignerNotificationHistoryState
+    extends State<_DesignerNotificationHistory> {
+  List<DesignerNotification> _notifications = const [];
+  Object? _error;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final notifications = await widget.repository.loadDesignerNotifications(
+        widget.designerId,
+      );
+      if (!mounted) return;
+      setState(() => _notifications = notifications);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _markRead(DesignerNotification notification) async {
+    if (notification.isRead) return;
+    try {
+      await widget.repository.markDesignerNotificationRead(notification.id);
+      if (!mounted) return;
+      setState(() {
+        _notifications = [
+          for (final item in _notifications)
+            if (item.id == notification.id)
+              DesignerNotification(
+                id: item.id,
+                type: item.type,
+                status: item.status,
+                createdAt: item.createdAt,
+                isRead: true,
+                rejectionReason: item.rejectionReason,
+                designTitle: item.designTitle,
+              )
+            else
+              item,
+        ];
+      });
+      await widget.onChanged();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not mark notification as read: $error'),
+          ),
+        );
+      }
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    final local = date.toLocal();
+    final dateText = MaterialLocalizations.of(context).formatMediumDate(local);
+    final timeText = MaterialLocalizations.of(
+      context,
+    ).formatTimeOfDay(TimeOfDay.fromDateTime(local));
+    return '$dateText · $timeText';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      heightFactor: 0.82,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 14, 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Notifications', style: headingStyle(23)),
+                        const SizedBox(height: 3),
+                        const Text(
+                          'Application updates and shopper activity',
+                          style: TextStyle(color: muted, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Close',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.cloud_off_outlined, color: accent),
+                            const SizedBox(height: 10),
+                            const Text(
+                              'Could not load notifications.',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '$_error',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: muted,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              onPressed: _load,
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Try again'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : _notifications.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.notifications_none_rounded,
+                              size: 36,
+                              color: muted,
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              'No notifications yet',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            SizedBox(height: 5),
+                            Text(
+                              'Application updates and design saves will appear here.',
+                              style: TextStyle(color: muted, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+                      itemCount: _notifications.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final notification = _notifications[index];
+                        final isSaved = notification.isDesignSaved;
+                        final accepted = notification.isAccepted;
+                        return Material(
+                          color: notification.isRead
+                              ? Colors.white
+                              : const Color(0xFFF2F6F2),
+                          borderRadius: BorderRadius.circular(16),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () => _markRead(notification),
+                            child: Container(
+                              padding: const EdgeInsets.all(15),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: line),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 21,
+                                    backgroundColor: isSaved || accepted
+                                        ? sage
+                                        : const Color(0xFFFFEEEE),
+                                    child: Icon(
+                                      isSaved
+                                          ? Icons.bookmark_rounded
+                                          : accepted
+                                          ? Icons.check_rounded
+                                          : Icons.close_rounded,
+                                      color: isSaved || accepted
+                                          ? accent
+                                          : Colors.red.shade700,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          isSaved
+                                              ? 'A shopper saved your design'
+                                              : accepted
+                                              ? 'Your designer application was accepted'
+                                              : 'Your designer application was declined',
+                                          style: TextStyle(
+                                            fontWeight: notification.isRead
+                                                ? FontWeight.w600
+                                                : FontWeight.w800,
+                                            color: ink,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 5),
+                                        Text(
+                                          isSaved
+                                              ? '“${notification.designTitle ?? 'Your design'}” was added to a shopper’s saved designs.'
+                                              : accepted
+                                              ? 'You can now manage your brand and upload designs.'
+                                              : notification.rejectionReason
+                                                        ?.trim()
+                                                        .isNotEmpty ==
+                                                    true
+                                              ? notification.rejectionReason!
+                                              : 'Your application was not approved at this time.',
+                                          style: const TextStyle(
+                                            color: muted,
+                                            fontSize: 13,
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          _formatDate(notification.createdAt),
+                                          style: const TextStyle(
+                                            color: muted,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (!notification.isRead)
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      margin: const EdgeInsets.only(
+                                        top: 5,
+                                        left: 8,
+                                      ),
+                                      decoration: const BoxDecoration(
+                                        color: accent,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

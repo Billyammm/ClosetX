@@ -73,6 +73,7 @@ class _ClosetShellState extends State<ClosetShell> {
     final isDesigner = SessionScope.of(context).profile?.isDesigner == true;
     final pages = [
       const DiscoverScreen(),
+      if (isDesigner) const CommunityDesignsScreen(),
       isDesigner
           ? const DesignerStudioScreen()
           : const SearchScreen(isBrowse: true),
@@ -94,6 +95,11 @@ class _ClosetShellState extends State<ClosetShell> {
             icon: Icon(Icons.grid_view_rounded),
             label: 'Discover',
           ),
+          if (isDesigner)
+            const NavigationDestination(
+              icon: Icon(Icons.groups_2_outlined),
+              label: 'Community',
+            ),
           NavigationDestination(
             icon: Icon(
               isDesigner ? Icons.checkroom_outlined : Icons.search_rounded,

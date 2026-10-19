@@ -16,6 +16,7 @@ class Garment {
     this.backImageUrl,
     this.shirtColorHex,
     this.designerLogoUrl,
+    this.designerId,
     this.frontImageUrl,
   });
 
@@ -39,6 +40,9 @@ class Garment {
 
   /// The brand's logo, shown next to [designer].
   final String? designerLogoUrl;
+
+  /// Supabase profile ID of the designer who uploaded this design.
+  final String? designerId;
 
   /// Front artwork printed on the 3D shirt. Falls back to [imageUrl] for
   /// garments without separate artwork.

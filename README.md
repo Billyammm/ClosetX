@@ -85,6 +85,17 @@ For a completely fresh Supabase project, run these migrations in order:
 4. `supabase/migrations/20261008120000_shopper_saved_designs.sql`
 5. `supabase/migrations/20261009120000_public_design_popularity.sql`
 
+To enable persistent designer application decision notifications on an
+existing project, run
+`supabase/migrations/20261019170000_designer_application_notifications.sql`.
+It records each admin acceptance or rejection, lets the designer read and mark
+their own notifications, and enables Realtime updates for the notification
+badge. To also notify designers when a shopper saves one of their designs, run
+`supabase/migrations/20261019180000_designer_save_notifications.sql` after it.
+Existing applications with a recorded review timestamp receive one initial
+history entry; older decision history cannot be reconstructed from the current
+profile status alone.
+
 ### Admin dashboard
 
 The static dashboard is in `admin-dashboard/`. Serve the ClosetX project root
