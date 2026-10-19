@@ -66,13 +66,35 @@ For a completely fresh Supabase project, run these migrations in order:
 4. `supabase/migrations/20261008120000_shopper_saved_designs.sql`
 5. `supabase/migrations/20261009120000_public_design_popularity.sql`
 6. `supabase/migrations/20261010120000_realtime_published_designs.sql`
+7. `supabase/migrations/20261011120000_google_role_setup.sql`
 
 The final migration enables Postgres Changes for `public.designs`. While the
 Discover screen is open, the app subscribes to changes and reloads the public
 catalog after an admin publishes, updates, or removes a design. Realtime events
 only notify rows allowed by the existing design read policies; the catalog is
 still queried with `is_published = true`. Apply this migration to an existing
-project as well as fresh projects to enable live catalog updates.
+project as well as fresh projects to enable live catalog updates and Google
+role setup.
+
+### Google sign-in
+
+The Flutter app supports Google sign-in in addition to email and password.
+New Google users choose **Shopper** or **Designer** once after returning from
+Google. Designer accounts still require admin approval before they can upload.
+
+To enable it:
+
+1. In Google Cloud Console, create a Web OAuth client and add the Supabase
+   callback URL shown in **Supabase → Authentication → Providers → Google**.
+2. Enable the Google provider in Supabase and enter the Google client ID and
+   client secret.
+3. Add `closetx://login-callback/` to the Supabase Authentication redirect URLs
+   for Android, and add the web app URL for browser sign-in.
+4. Apply `supabase/migrations/20261011120000_google_role_setup.sql`.
+
+The Android app uses the `closetx://login-callback/` deep link. Google sign-in
+cannot work until the provider credentials, redirect URLs, and migration are
+configured in Supabase.
 
 ### Admin dashboard
 
