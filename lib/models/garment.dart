@@ -47,6 +47,22 @@ class Garment {
   String get formattedPrice => formatPeso(price);
 }
 
+class DesignReview {
+  const DesignReview({
+    required this.rating,
+    required this.comment,
+    required this.authorName,
+    required this.createdAt,
+    this.isMine = false,
+  });
+
+  final int rating;
+  final String comment;
+  final String authorName;
+  final DateTime createdAt;
+  final bool isMine;
+}
+
 String formatPeso(int amount) {
   return '₱${amount.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]},')}';
 }

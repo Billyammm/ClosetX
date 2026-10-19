@@ -347,6 +347,53 @@ class ClosetXRepository {
         .eq('id', designId);
   }
 
+  Future<List<DesignReview>> loadDesignReviews(String designId) async {
+    final rows = await _client
+        .from('design_reviews')
+        .select('rating, comment, author_name, created_at, user_id')
+        .eq('design_id', designId)
+        .order('created_at', ascending: false);
+    final userId = _client.auth.currentUser?.id;
+    return rows
+        .map(
+          (row) => DesignReview(
+            rating: row['rating'] as int,
+            comment: row['comment'] as String,
+            authorName: (row['author_name'] as String?)?.trim().isNotEmpty == true
+                ? row['author_name'] as String
+                : 'Shopper',
+            createdAt: DateTime.parse(row['created_at'] as String),
+            isMine: row['user_id'] == userId,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> submitDesignReview({
+    required String designId,
+    required int rating,
+    required String comment,
+  }) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw const AuthException('Sign in to rate and comment on a design.');
+    }
+    final metadataName = user.userMetadata?['full_name'];
+    final authorName = metadataName is String && metadataName.trim().isNotEmpty
+        ? metadataName.trim()
+        : (user.email?.split('@').first ?? 'Shopper');
+    await _client.from('design_reviews').upsert(
+      {
+        'design_id': designId,
+        'user_id': user.id,
+        'author_name': authorName,
+        'rating': rating,
+        'comment': comment.trim(),
+      },
+      onConflict: 'design_id,user_id',
+    );
+  }
+
   Future<void> submitFeedback({
     required String authorName,
     required String authorEmail,

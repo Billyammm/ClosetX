@@ -68,6 +68,7 @@ For a completely fresh Supabase project, run these migrations in order:
 6. `supabase/migrations/20261010120000_realtime_published_designs.sql`
 7. `supabase/migrations/20261011120000_google_role_setup.sql`
 8. `supabase/migrations/20261019130000_realtime_catalog_brands.sql`
+9. `supabase/migrations/20261019140000_design_reviews.sql`
 
 The Realtime migrations enable Postgres Changes for `public.designs` and
 `public.brands`. While the Discover screen is open, the app subscribes to
@@ -77,6 +78,10 @@ notify rows allowed by the existing read policies; the catalog is still
 queried with `is_published = true`. Apply these migrations to an existing
 project as well as fresh projects to enable live design and brand updates and
 Google role setup.
+
+Shoppers can open a published design, tap the review icon, and submit one
+rating and comment per design. Applying the design reviews migration enables
+the review section and its authenticated shopper permissions.
 
 ### Google sign-in
 

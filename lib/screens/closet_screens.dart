@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/account.dart';
 import '../models/garment.dart';
+import '../data/closetx_repository.dart';
 import '../state/closet_store.dart';
 import '../state/session_store.dart';
 import '../theme.dart';
@@ -150,6 +151,9 @@ class ProductDetailScreen extends StatefulWidget {
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   int _quantity = 1;
+  final _repository = ClosetXRepository();
+  List<DesignReview> _reviews = const [];
+  bool _reviewsLoading = false;
 
   void _openTryOn(Garment garment, TryOnMode mode) {
     Navigator.of(context).push(
@@ -157,6 +161,119 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         builder: (_) => TryOnScreen(garment: garment, initialMode: mode),
       ),
     );
+  }
+
+  String? get _designId {
+    const prefix = 'supabase:';
+    return widget.garment.id.startsWith(prefix)
+        ? widget.garment.id.substring(prefix.length)
+        : null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (_designId != null) _loadReviews();
+  }
+
+  Future<void> _loadReviews() async {
+    setState(() => _reviewsLoading = true);
+    try {
+      final reviews = await _repository.loadDesignReviews(_designId!);
+      if (mounted) setState(() => _reviews = reviews);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not load reviews: $error')));
+      }
+    } finally {
+      if (mounted) setState(() => _reviewsLoading = false);
+    }
+  }
+
+  Future<void> _openReviewComposer() async {
+    final session = SessionScope.of(context);
+    if (!session.isSignedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to rate and comment on a design.')),
+      );
+      return;
+    }
+    final existing = _reviews.where((review) => review.isMine).firstOrNull;
+    var rating = existing?.rating ?? 5;
+    final controller = TextEditingController(text: existing?.comment ?? '');
+    final result = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(existing == null ? 'Rate this design' : 'Edit your review'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Wrap(
+                spacing: 2,
+                children: [
+                  for (var value = 1; value <= 5; value++)
+                    IconButton(
+                      tooltip: '$value star${value == 1 ? '' : 's'}',
+                      onPressed: () => setDialogState(() => rating = value),
+                      icon: Icon(
+                        value <= rating
+                            ? Icons.star_rounded
+                            : Icons.star_border_rounded,
+                        color: accent,
+                      ),
+                    ),
+                ],
+              ),
+              TextField(
+                controller: controller,
+                maxLines: 4,
+                maxLength: 500,
+                decoration: const InputDecoration(
+                  labelText: 'Comment',
+                  hintText: 'What do you think about this design?',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (controller.text.trim().isEmpty) return;
+                Navigator.of(dialogContext).pop(rating);
+              },
+              child: const Text('Submit'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null || !mounted) {
+      controller.dispose();
+      return;
+    }
+    try {
+      await _repository.submitDesignReview(
+        designId: _designId!,
+        rating: result,
+        comment: controller.text,
+      );
+      await _loadReviews();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not save your review: $error')),
+        );
+      }
+    } finally {
+      controller.dispose();
+    }
   }
 
   @override
@@ -186,6 +303,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => const CartScreen()),
                 ),
+              ),
+              IconButton(
+                tooltip: 'Rate this design',
+                onPressed: _designId == null ? null : _openReviewComposer,
+                icon: const Icon(Icons.rate_review_outlined, color: ink),
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
@@ -241,6 +363,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ],
                   ),
                   const SizedBox(height: 18),
+                  _DesignReviews(
+                    reviews: _reviews,
+                    isLoading: _reviewsLoading,
+                    onReview: _designId == null ? null : _openReviewComposer,
+                  ),
+                  const SizedBox(height: 22),
                   Text(
                     garment.description,
                     style: const TextStyle(
@@ -365,6 +493,112 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DesignReviews extends StatelessWidget {
+  const _DesignReviews({
+    required this.reviews,
+    required this.isLoading,
+    required this.onReview,
+  });
+
+  final List<DesignReview> reviews;
+  final bool isLoading;
+  final VoidCallback? onReview;
+
+  @override
+  Widget build(BuildContext context) {
+    final average = reviews.isEmpty
+        ? 0
+        : reviews.map((review) => review.rating).reduce((a, b) => a + b) /
+              reviews.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              'Reviews',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(width: 10),
+            if (reviews.isNotEmpty) ...[
+              const Icon(Icons.star_rounded, size: 18, color: accent),
+              const SizedBox(width: 3),
+              Text(
+                '${average.toStringAsFixed(1)} (${reviews.length})',
+                style: const TextStyle(color: muted, fontSize: 13),
+              ),
+            ],
+            const Spacer(),
+            TextButton.icon(
+              onPressed: onReview,
+              icon: const Icon(Icons.rate_review_outlined, size: 18),
+              label: Text(reviews.any((review) => review.isMine) ? 'Edit' : 'Review'),
+            ),
+          ],
+        ),
+        if (isLoading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (reviews.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text(
+              'No reviews yet. Be the first to share what you think.',
+              style: TextStyle(color: muted, height: 1.45),
+            ),
+          )
+        else
+          ...reviews.take(3).map(
+            (review) => Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: paper,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: line),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              review.authorName,
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              for (var star = 1; star <= 5; star++)
+                                Icon(
+                                  star <= review.rating
+                                      ? Icons.star_rounded
+                                      : Icons.star_border_rounded,
+                                  size: 16,
+                                  color: accent,
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      Text(review.comment, style: const TextStyle(color: muted)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
