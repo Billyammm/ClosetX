@@ -398,37 +398,75 @@ function renderStats(shopperCount) {
         feedback: allFeedback.length,
         saves: allDesigns.reduce((total, design) => total + (design.save_count || 0), 0),
     };
-    document.getElementById('stats-cards').innerHTML = `
-        <div class="metric-card">
-            <span class="metric-icon metric-emerald"><i class="fas fa-users"></i></span>
-            <span><strong>${stats.registeredDesigners + stats.shoppers}</strong><small>Active users</small><small>${stats.registeredDesigners} designer${stats.registeredDesigners === 1 ? '' : 's'} · ${stats.shoppers} shopper${stats.shoppers === 1 ? '' : 's'}</small></span>
-        </div>
-        <button type="button" onclick="showSection('applications')" class="metric-card">
-            <span class="metric-icon metric-amber"><i class="fas fa-id-card"></i></span>
-            <span><strong>${stats.applications}</strong><small>Pending applications</small></span>
-            <i class="fas fa-arrow-right metric-arrow"></i>
-        </button>
-        <button type="button" onclick="showSection('pending')" class="metric-card">
-            <span class="metric-icon metric-slate"><i class="fas fa-images"></i></span>
-            <span><strong>${stats.pending}</strong><small>Designs awaiting review</small></span>
-            <i class="fas fa-arrow-right metric-arrow"></i>
-        </button>
-        <button type="button" onclick="showSection('designers')" class="metric-card">
-            <span class="metric-icon metric-emerald"><i class="fas fa-users"></i></span>
-            <span><strong>${stats.designers}</strong><small>Accepted designers</small></span>
-            <i class="fas fa-arrow-right metric-arrow"></i>
-        </button>
-        <button type="button" onclick="showSection('feedback')" class="metric-card">
-            <span class="metric-icon metric-slate"><i class="fas fa-comment-dots"></i></span>
-            <span><strong>${stats.feedback}</strong><small>Customer feedback</small></span>
-            <i class="fas fa-arrow-right metric-arrow"></i>
-        </button>
-        <button type="button" onclick="showSection('favorites')" class="metric-card">
-            <span class="metric-icon metric-slate"><i class="fas fa-bookmark"></i></span>
-            <span><strong>${stats.saves}</strong><small>Shopper saves</small></span>
-            <i class="fas fa-arrow-right metric-arrow"></i>
-        </button>
-    `;
+    const metrics = [
+        {
+            value: stats.registeredDesigners + stats.shoppers,
+            label: 'Active users',
+            detail: `${stats.registeredDesigners} designer${stats.registeredDesigners === 1 ? '' : 's'} · ${stats.shoppers} shopper${stats.shoppers === 1 ? '' : 's'}`,
+            icon: 'fa-users',
+            tone: 'metric-emerald',
+        },
+        {
+            value: stats.applications,
+            label: 'Pending applications',
+            icon: 'fa-id-card',
+            tone: 'metric-amber',
+            section: 'applications',
+        },
+        {
+            value: stats.pending,
+            label: 'Designs awaiting review',
+            icon: 'fa-images',
+            tone: 'metric-slate',
+            section: 'pending',
+        },
+        {
+            value: stats.designers,
+            label: 'Accepted designers',
+            icon: 'fa-users',
+            tone: 'metric-emerald',
+            section: 'designers',
+        },
+        {
+            value: stats.feedback,
+            label: 'Customer feedback',
+            icon: 'fa-comment-dots',
+            tone: 'metric-slate',
+            section: 'feedback',
+        },
+        {
+            value: stats.saves,
+            label: 'Shopper saves',
+            icon: 'fa-bookmark',
+            tone: 'metric-slate',
+            section: 'favorites',
+        },
+    ];
+    const metricCards = metrics.map((metric) => {
+        const card = createTextElement(metric.section ? 'button' : 'div', 'metric-card');
+        if (metric.section) {
+            card.type = 'button';
+            card.addEventListener('click', () => showSection(metric.section));
+        }
+        const icon = createTextElement('span', `metric-icon ${metric.tone}`);
+        const iconGlyph = createTextElement('i', `fas ${metric.icon}`);
+        iconGlyph.setAttribute('aria-hidden', 'true');
+        icon.append(iconGlyph);
+        const summary = createTextElement('span');
+        summary.append(
+            createTextElement('strong', '', metric.value),
+            createTextElement('small', '', metric.label),
+        );
+        if (metric.detail) summary.append(createTextElement('small', '', metric.detail));
+        card.append(icon, summary);
+        if (metric.section) {
+            const arrow = createTextElement('i', 'fas fa-arrow-right metric-arrow');
+            arrow.setAttribute('aria-hidden', 'true');
+            card.append(arrow);
+        }
+        return card;
+    });
+    document.getElementById('stats-cards').replaceChildren(...metricCards);
     document.getElementById('pending-badge').textContent = stats.pending;
     document.getElementById('applications-badge').textContent = stats.applications;
     document.getElementById('designers-badge').textContent = stats.designers;
