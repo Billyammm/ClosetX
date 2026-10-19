@@ -10,7 +10,7 @@ let designDesignerFilter = 'all';
 let applicationFilter = 'pending';
 let feedbackSort = 'newest';
 let designReviewSort = 'newest';
-let selectedReviewDesignerId = 'all';
+const expandedReviewDesignerIds = new Set();
 let notificationSort = 'all';
 
 function escapeHtml(value) {
@@ -228,8 +228,19 @@ function bindDashboardControls() {
 
 function applyCurrentSearch() {
     const query = document.getElementById('global-search')?.value.trim().toLowerCase() || '';
-    document.getElementById(`${currentSection}-section`)?.querySelectorAll('[data-searchable]').forEach((row) => {
+    const section = document.getElementById(`${currentSection}-section`);
+    section?.querySelectorAll('[data-searchable]').forEach((row) => {
         row.classList.toggle('hidden', !row.textContent.toLowerCase().includes(query));
+    });
+    section?.querySelectorAll('[data-review-brand-group]').forEach((group) => {
+        const designerId = group.dataset.reviewBrandGroup;
+        const expanded = query
+            ? !group.classList.contains('hidden')
+            : expandedReviewDesignerIds.has(designerId);
+        const panel = group.querySelector('[data-review-brand-panel]');
+        const button = group.querySelector('[data-review-brand-toggle]');
+        panel?.classList.toggle('hidden', !expanded);
+        button?.setAttribute('aria-expanded', String(expanded));
     });
 }
 
@@ -912,76 +923,6 @@ function renderDesignReviews() {
         designerGroups.get(designerId).designs.push(design);
     });
     const designers = [...designerGroups.values()].sort((a, b) => a.name.localeCompare(b.name));
-    if (selectedReviewDesignerId !== 'all'
-        && !designers.some((designer) => designer.id === selectedReviewDesignerId)) {
-        selectedReviewDesignerId = 'all';
-    }
-    const designerList = document.getElementById('design-review-designers');
-    designerList.replaceChildren();
-    if (!designers.length) {
-        designerList.append(createEmptyState(
-            'fas fa-users',
-            'No published designer designs yet.',
-            'Published designs will appear here when designers are approved and their designs are published.',
-        ));
-    } else {
-        const designerPanel = createTextElement(
-            'div',
-            'rounded-xl border border-gray-200 bg-white p-4',
-        );
-        const panelHeading = createTextElement(
-            'div',
-            'mb-3 flex flex-wrap items-center justify-between gap-2',
-        );
-        const panelTitle = createTextElement('div');
-        panelTitle.append(
-            createTextElement('h4', 'font-bold text-gray-900', 'Designers'),
-            createTextElement(
-                'p',
-                'mt-1 text-sm text-gray-500',
-                'Select a designer to view their published designs and reviews.',
-            ),
-        );
-        panelHeading.append(
-            panelTitle,
-            createTextElement(
-                'span',
-                'text-sm text-gray-500',
-                `${designers.length} designer${designers.length === 1 ? '' : 's'}`,
-            ),
-        );
-        const designerButtons = createTextElement('div', 'flex flex-wrap gap-2');
-        designerButtons.setAttribute('role', 'list');
-        designerButtons.setAttribute('aria-label', 'Designers with published designs');
-        const designerFilters = [
-            { id: 'all', name: 'All designers', count: null },
-            ...designers.map((designer) => ({
-                id: designer.id,
-                name: designer.name,
-                count: designer.designs.length,
-            })),
-        ];
-        designerFilters.forEach((designer) => {
-            const button = createTextElement('button', 'filter-tab', designer.name);
-            button.type = 'button';
-            if (selectedReviewDesignerId === designer.id) button.classList.add('active');
-            button.dataset.reviewDesigner = designer.id;
-            if (designer.count !== null) {
-                button.append(createTextElement('span', '', ` ${designer.count}`));
-            }
-            button.addEventListener('click', () => {
-                selectedReviewDesignerId = designer.id;
-                renderDesignReviews();
-            });
-            designerButtons.append(button);
-        });
-        designerPanel.append(panelHeading, designerButtons);
-        designerList.append(designerPanel);
-    }
-
-    const selectedGroups = selectedReviewDesignerId === 'all'
-        ? designers
-        : designers.filter((designer) => designer.id === selectedReviewDesignerId);
     const reviewByDesign = new Map();
     reviews.forEach((review) => {
         if (!reviewByDesign.has(review.design_id)) reviewByDesign.set(review.design_id, []);
@@ -989,9 +930,57 @@ function renderDesignReviews() {
     });
     const designReviewsList = document.getElementById('design-reviews-list');
     designReviewsList.replaceChildren();
-    if (!designReviewsError && selectedGroups.length) {
-        const cards = createTextElement('div', 'grid grid-cols-1 gap-4');
-        selectedGroups.forEach((designer) => {
+    const activeDesignerIds = new Set(designers.map((designer) => designer.id));
+    expandedReviewDesignerIds.forEach((designerId) => {
+        if (!activeDesignerIds.has(designerId)) expandedReviewDesignerIds.delete(designerId);
+    });
+    if (!designReviewsError && designers.length) {
+        const brandList = createTextElement('div', 'space-y-3');
+        designers.forEach((designer, index) => {
+            const brandReviews = designer.designs.reduce(
+                (total, design) => total + (reviewByDesign.get(design.id)?.length || 0),
+                0,
+            );
+            const expanded = expandedReviewDesignerIds.has(designer.id);
+            const brandGroup = createTextElement(
+                'section',
+                'overflow-hidden rounded-xl border border-gray-200 bg-white',
+            );
+            brandGroup.setAttribute('data-searchable', '');
+            brandGroup.dataset.reviewBrandGroup = designer.id;
+
+            const brandId = `design-review-brand-${index}`;
+            const brandToggle = createTextElement(
+                'button',
+                'flex w-full items-center justify-between gap-4 p-5 text-left transition-colors hover:bg-gray-50',
+            );
+            brandToggle.type = 'button';
+            brandToggle.dataset.reviewBrandToggle = '';
+            brandToggle.setAttribute('aria-controls', brandId);
+            brandToggle.setAttribute('aria-expanded', String(expanded));
+            const brandInfo = createTextElement('span', 'min-w-0');
+            brandInfo.append(
+                createTextElement('span', 'block text-base font-bold text-gray-900', designer.name),
+                createTextElement(
+                    'span',
+                    'mt-1 block text-sm text-gray-500',
+                    `${designer.designs.length} published design${designer.designs.length === 1 ? '' : 's'} · ${brandReviews} review${brandReviews === 1 ? '' : 's'}`,
+                ),
+            );
+            const brandIcon = createTextElement(
+                'i',
+                `fas ${expanded ? 'fa-chevron-up' : 'fa-chevron-down'} text-sm text-gray-500`,
+            );
+            brandIcon.setAttribute('aria-hidden', 'true');
+            brandToggle.append(brandInfo, brandIcon);
+
+            const brandPanel = createTextElement(
+                'div',
+                `border-t border-gray-100 p-4 ${expanded ? '' : 'hidden'}`,
+            );
+            brandPanel.id = brandId;
+            brandPanel.dataset.reviewBrandPanel = '';
+            const designCards = createTextElement('div', 'grid grid-cols-1 gap-4');
             designer.designs.forEach((design) => {
                 const designReviews = reviewByDesign.get(design.id) || [];
                 const article = createTextElement(
@@ -1085,15 +1074,27 @@ function renderDesignReviews() {
                     ));
                 }
                 article.append(heading, reviewsSection);
-                cards.append(article);
+                designCards.append(article);
             });
+            brandPanel.append(designCards);
+            brandToggle.addEventListener('click', () => {
+                const willExpand = brandPanel.classList.contains('hidden');
+                if (willExpand) expandedReviewDesignerIds.add(designer.id);
+                else expandedReviewDesignerIds.delete(designer.id);
+                brandPanel.classList.toggle('hidden', !willExpand);
+                brandToggle.setAttribute('aria-expanded', String(willExpand));
+                brandIcon.classList.toggle('fa-chevron-down', !willExpand);
+                brandIcon.classList.toggle('fa-chevron-up', willExpand);
+            });
+            brandGroup.append(brandToggle, brandPanel);
+            brandList.append(brandGroup);
         });
-        designReviewsList.append(cards);
+        designReviewsList.append(brandList);
     } else if (!designReviewsError) {
         designReviewsList.append(createEmptyState(
             'far fa-star',
-            'No published designs found for this designer.',
-            'Select another designer to view their designs and reviews.',
+            'No published designer designs yet.',
+            'Published designs and their reviews will appear here.',
         ));
     }
     applyCurrentSearch();
