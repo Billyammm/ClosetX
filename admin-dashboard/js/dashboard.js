@@ -10,7 +10,7 @@ let designDesignerFilter = 'all';
 let applicationFilter = 'pending';
 let feedbackSort = 'newest';
 let designReviewSort = 'newest';
-let selectedReviewDesignerId = 'all';
+const expandedReviewDesignerIds = new Set();
 let notificationSort = 'all';
 
 function escapeHtml(value) {
@@ -24,9 +24,14 @@ function escapeHtml(value) {
 }
 
 function safeImageUrl(value) {
+    const imageUrl = safeImageSource(value);
+    return imageUrl ? escapeHtml(imageUrl) : '';
+}
+
+function safeImageSource(value) {
     try {
         const url = new URL(value);
-        return ['http:', 'https:'].includes(url.protocol) ? escapeHtml(url.href) : '';
+        return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
     } catch {
         return '';
     }
@@ -228,9 +233,30 @@ function bindDashboardControls() {
 
 function applyCurrentSearch() {
     const query = document.getElementById('global-search')?.value.trim().toLowerCase() || '';
-    document.getElementById(`${currentSection}-section`)?.querySelectorAll('[data-searchable]').forEach((row) => {
+    const section = document.getElementById(`${currentSection}-section`);
+    section?.querySelectorAll('[data-searchable]').forEach((row) => {
         row.classList.toggle('hidden', !row.textContent.toLowerCase().includes(query));
     });
+    section?.querySelectorAll('[data-review-brand-group]').forEach((group) => {
+        const designerId = group.dataset.reviewBrandGroup;
+        const expanded = query
+            ? !group.classList.contains('hidden')
+            : expandedReviewDesignerIds.has(designerId);
+        const panel = group.querySelector('[data-review-brand-panel]');
+        const button = group.querySelector('[data-review-brand-toggle]');
+        setReviewPanelExpanded(panel, button, expanded);
+    });
+}
+
+function setReviewPanelExpanded(panel, button, expanded) {
+    if (!panel || !button) return;
+    panel.classList.toggle('is-open', expanded);
+    panel.inert = !expanded;
+    panel.setAttribute('aria-hidden', String(!expanded));
+    button.setAttribute('aria-expanded', String(expanded));
+    const icon = button.querySelector('i');
+    icon?.classList.toggle('fa-chevron-down', !expanded);
+    icon?.classList.toggle('fa-chevron-up', expanded);
 }
 
 async function loadDashboard() {
@@ -238,11 +264,12 @@ async function loadDashboard() {
     try {
         feedbackError = null;
         designReviewsError = null;
-        const [, , appFeedbackResult, saveCounts] = await Promise.all([
+        const [, , appFeedbackResult, saveCounts, shopperCount] = await Promise.all([
             loadDesigns(),
             loadDesigners(),
             loadFeedback().then(() => ({ success: true })).catch((error) => ({ success: false, error })),
             loadDesignSaveCounts(),
+            loadShopperCount(),
         ]);
         if (!appFeedbackResult.success) {
             feedbackError = appFeedbackResult.error;
@@ -259,7 +286,7 @@ async function loadDashboard() {
             ...design,
             save_count: saveCounts.get(design.id) || 0,
         }));
-        renderStats();
+        renderStats(shopperCount);
         renderRecentActivity();
         renderCharts();
         showSection(currentSection);
@@ -273,6 +300,15 @@ async function loadDesignSaveCounts() {
     const { data, error } = await closetxSupabase.rpc('get_design_save_counts');
     if (error) throw new Error(`Could not load shopper saves: ${error.message}`);
     return new Map((data || []).map((row) => [row.design_id, Number(row.save_count)]));
+}
+
+async function loadShopperCount() {
+    const { count, error } = await closetxSupabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('role', 'shopper');
+    if (error) throw new Error(`Could not load shopper count: ${error.message}`);
+    return count ?? 0;
 }
 
 async function loadDesigns() {
@@ -350,43 +386,87 @@ async function loadDesignReviews() {
         .filter((review) => review.design?.is_published);
 }
 
-function renderStats() {
+function renderStats(shopperCount) {
     const stats = {
         pending: allDesigns.filter((design) => design.status === 'pending').length,
         approved: allDesigns.filter((design) => design.status === 'approved').length,
         rejected: allDesigns.filter((design) => design.status === 'rejected').length,
         applications: allDesigners.filter((designer) => designer.application_status === 'pending').length,
         designers: allDesigners.filter((designer) => designer.application_status === 'approved').length,
+        registeredDesigners: allDesigners.length,
+        shoppers: shopperCount,
         feedback: allFeedback.length,
         saves: allDesigns.reduce((total, design) => total + (design.save_count || 0), 0),
     };
-    document.getElementById('stats-cards').innerHTML = `
-        <button type="button" onclick="showSection('applications')" class="metric-card">
-            <span class="metric-icon metric-amber"><i class="fas fa-id-card"></i></span>
-            <span><strong>${stats.applications}</strong><small>Pending applications</small></span>
-            <i class="fas fa-arrow-right metric-arrow"></i>
-        </button>
-        <button type="button" onclick="showSection('pending')" class="metric-card">
-            <span class="metric-icon metric-slate"><i class="fas fa-images"></i></span>
-            <span><strong>${stats.pending}</strong><small>Designs awaiting review</small></span>
-            <i class="fas fa-arrow-right metric-arrow"></i>
-        </button>
-        <button type="button" onclick="showSection('designers')" class="metric-card">
-            <span class="metric-icon metric-emerald"><i class="fas fa-users"></i></span>
-            <span><strong>${stats.designers}</strong><small>Accepted designers</small></span>
-            <i class="fas fa-arrow-right metric-arrow"></i>
-        </button>
-        <button type="button" onclick="showSection('feedback')" class="metric-card">
-            <span class="metric-icon metric-slate"><i class="fas fa-comment-dots"></i></span>
-            <span><strong>${stats.feedback}</strong><small>Customer feedback</small></span>
-            <i class="fas fa-arrow-right metric-arrow"></i>
-        </button>
-        <button type="button" onclick="showSection('favorites')" class="metric-card">
-            <span class="metric-icon metric-slate"><i class="fas fa-bookmark"></i></span>
-            <span><strong>${stats.saves}</strong><small>Shopper saves</small></span>
-            <i class="fas fa-arrow-right metric-arrow"></i>
-        </button>
-    `;
+    const metrics = [
+        {
+            value: stats.registeredDesigners + stats.shoppers,
+            label: 'Active users',
+            detail: `${stats.registeredDesigners} designer${stats.registeredDesigners === 1 ? '' : 's'} · ${stats.shoppers} shopper${stats.shoppers === 1 ? '' : 's'}`,
+            icon: 'fa-users',
+            tone: 'metric-emerald',
+        },
+        {
+            value: stats.applications,
+            label: 'Pending applications',
+            icon: 'fa-id-card',
+            tone: 'metric-amber',
+            section: 'applications',
+        },
+        {
+            value: stats.pending,
+            label: 'Designs awaiting review',
+            icon: 'fa-images',
+            tone: 'metric-slate',
+            section: 'pending',
+        },
+        {
+            value: stats.designers,
+            label: 'Accepted designers',
+            icon: 'fa-users',
+            tone: 'metric-emerald',
+            section: 'designers',
+        },
+        {
+            value: stats.feedback,
+            label: 'Customer feedback',
+            icon: 'fa-comment-dots',
+            tone: 'metric-slate',
+            section: 'feedback',
+        },
+        {
+            value: stats.saves,
+            label: 'Shopper saves',
+            icon: 'fa-bookmark',
+            tone: 'metric-slate',
+            section: 'favorites',
+        },
+    ];
+    const metricCards = metrics.map((metric) => {
+        const card = createTextElement(metric.section ? 'button' : 'div', 'metric-card');
+        if (metric.section) {
+            card.type = 'button';
+            card.addEventListener('click', () => showSection(metric.section));
+        }
+        const icon = createTextElement('span', `metric-icon ${metric.tone}`);
+        const iconGlyph = createTextElement('i', `fas ${metric.icon}`);
+        iconGlyph.setAttribute('aria-hidden', 'true');
+        icon.append(iconGlyph);
+        const summary = createTextElement('span');
+        summary.append(
+            createTextElement('strong', '', metric.value),
+            createTextElement('small', '', metric.label),
+        );
+        if (metric.detail) summary.append(createTextElement('small', '', metric.detail));
+        card.append(icon, summary);
+        if (metric.section) {
+            const arrow = createTextElement('i', 'fas fa-arrow-right metric-arrow');
+            arrow.setAttribute('aria-hidden', 'true');
+            card.append(arrow);
+        }
+        return card;
+    });
+    document.getElementById('stats-cards').replaceChildren(...metricCards);
     document.getElementById('pending-badge').textContent = stats.pending;
     document.getElementById('applications-badge').textContent = stats.applications;
     document.getElementById('designers-badge').textContent = stats.designers;
@@ -905,83 +985,19 @@ function renderDesignReviews() {
     const designerGroups = new Map();
     publishedDesigns.forEach((design) => {
         const designerId = design.designer_id || design.brand_id || 'unknown';
-        const designerName = design.designer?.brand_name || design.brands?.name || 'ClosetX Designer';
+        const brandName = design.brands?.name || design.designer?.brand_name || 'ClosetX Designer';
         if (!designerGroups.has(designerId)) {
-            designerGroups.set(designerId, { id: designerId, name: designerName, designs: [] });
+            designerGroups.set(designerId, {
+                id: designerId,
+                name: brandName,
+                designerName: design.designer?.full_name || design.designer?.email || 'Designer',
+                logoUrl: design.brands?.logo_url || design.designer?.profile_image_url || '',
+                designs: [],
+            });
         }
         designerGroups.get(designerId).designs.push(design);
     });
     const designers = [...designerGroups.values()].sort((a, b) => a.name.localeCompare(b.name));
-    if (selectedReviewDesignerId !== 'all'
-        && !designers.some((designer) => designer.id === selectedReviewDesignerId)) {
-        selectedReviewDesignerId = 'all';
-    }
-    const designerList = document.getElementById('design-review-designers');
-    designerList.replaceChildren();
-    if (!designers.length) {
-        designerList.append(createEmptyState(
-            'fas fa-users',
-            'No published designer designs yet.',
-            'Published designs will appear here when designers are approved and their designs are published.',
-        ));
-    } else {
-        const designerPanel = createTextElement(
-            'div',
-            'rounded-xl border border-gray-200 bg-white p-4',
-        );
-        const panelHeading = createTextElement(
-            'div',
-            'mb-3 flex flex-wrap items-center justify-between gap-2',
-        );
-        const panelTitle = createTextElement('div');
-        panelTitle.append(
-            createTextElement('h4', 'font-bold text-gray-900', 'Designers'),
-            createTextElement(
-                'p',
-                'mt-1 text-sm text-gray-500',
-                'Select a designer to view their published designs and reviews.',
-            ),
-        );
-        panelHeading.append(
-            panelTitle,
-            createTextElement(
-                'span',
-                'text-sm text-gray-500',
-                `${designers.length} designer${designers.length === 1 ? '' : 's'}`,
-            ),
-        );
-        const designerButtons = createTextElement('div', 'flex flex-wrap gap-2');
-        designerButtons.setAttribute('role', 'list');
-        designerButtons.setAttribute('aria-label', 'Designers with published designs');
-        const designerFilters = [
-            { id: 'all', name: 'All designers', count: null },
-            ...designers.map((designer) => ({
-                id: designer.id,
-                name: designer.name,
-                count: designer.designs.length,
-            })),
-        ];
-        designerFilters.forEach((designer) => {
-            const button = createTextElement('button', 'filter-tab', designer.name);
-            button.type = 'button';
-            if (selectedReviewDesignerId === designer.id) button.classList.add('active');
-            button.dataset.reviewDesigner = designer.id;
-            if (designer.count !== null) {
-                button.append(createTextElement('span', '', ` ${designer.count}`));
-            }
-            button.addEventListener('click', () => {
-                selectedReviewDesignerId = designer.id;
-                renderDesignReviews();
-            });
-            designerButtons.append(button);
-        });
-        designerPanel.append(panelHeading, designerButtons);
-        designerList.append(designerPanel);
-    }
-
-    const selectedGroups = selectedReviewDesignerId === 'all'
-        ? designers
-        : designers.filter((designer) => designer.id === selectedReviewDesignerId);
     const reviewByDesign = new Map();
     reviews.forEach((review) => {
         if (!reviewByDesign.has(review.design_id)) reviewByDesign.set(review.design_id, []);
@@ -989,9 +1005,101 @@ function renderDesignReviews() {
     });
     const designReviewsList = document.getElementById('design-reviews-list');
     designReviewsList.replaceChildren();
-    if (!designReviewsError && selectedGroups.length) {
-        const cards = createTextElement('div', 'grid grid-cols-1 gap-4');
-        selectedGroups.forEach((designer) => {
+    const activeDesignerIds = new Set(designers.map((designer) => designer.id));
+    expandedReviewDesignerIds.forEach((designerId) => {
+        if (!activeDesignerIds.has(designerId)) expandedReviewDesignerIds.delete(designerId);
+    });
+    if (!designReviewsError && designers.length) {
+        const brandList = createTextElement('div', 'space-y-4 p-1 sm:p-2');
+        designers.forEach((designer, index) => {
+            const brandReviews = designer.designs.reduce(
+                (total, design) => total + (reviewByDesign.get(design.id)?.length || 0),
+                0,
+            );
+            const expanded = expandedReviewDesignerIds.has(designer.id);
+            const brandGroup = createTextElement(
+                'section',
+                'overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-lg',
+            );
+            brandGroup.setAttribute('data-searchable', '');
+            brandGroup.dataset.reviewBrandGroup = designer.id;
+
+            const brandId = `design-review-brand-${index}`;
+            const brandToggle = createTextElement(
+                'button',
+                'group flex w-full items-center gap-4 bg-gradient-to-r from-white to-gray-50/70 p-4 text-left transition-colors hover:from-violet-50/60 hover:to-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 sm:p-5',
+            );
+            brandToggle.type = 'button';
+            brandToggle.dataset.reviewBrandToggle = '';
+            brandToggle.setAttribute('aria-controls', brandId);
+            brandToggle.setAttribute('aria-expanded', String(expanded));
+
+            const avatar = createTextElement(
+                'span',
+                'relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-violet-100 via-fuchsia-50 to-rose-100 text-lg font-bold text-violet-700 shadow-sm ring-1 ring-white',
+            );
+            const initials = designer.name
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((word) => word[0])
+                .join('')
+                .toUpperCase();
+            avatar.append(createTextElement('span', '', initials || 'C'));
+            const logoUrl = safeImageSource(designer.logoUrl);
+            if (logoUrl) {
+                const logo = createTextElement('img', 'absolute inset-0 h-full w-full object-cover');
+                logo.src = logoUrl;
+                logo.alt = '';
+                logo.addEventListener('error', () => logo.remove());
+                avatar.append(logo);
+            }
+
+            const brandInfo = createTextElement('span', 'min-w-0 flex-1');
+            brandInfo.append(
+                createTextElement(
+                    'span',
+                    'block truncate text-base font-bold text-gray-900 transition-colors group-hover:text-violet-800',
+                    designer.name,
+                ),
+                createTextElement(
+                    'span',
+                    'mt-0.5 block truncate text-sm text-gray-500',
+                    `Designed by ${designer.designerName}`,
+                ),
+            );
+            const brandMeta = createTextElement(
+                'span',
+                'hidden shrink-0 items-center gap-2 rounded-full bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 sm:inline-flex',
+                `${brandReviews} review${brandReviews === 1 ? '' : 's'}`,
+            );
+            const reviewIcon = createTextElement('i', 'fas fa-star text-[10px] text-amber-500');
+            reviewIcon.setAttribute('aria-hidden', 'true');
+            brandMeta.prepend(reviewIcon);
+            const brandIcon = createTextElement(
+                'i',
+                `fas ${expanded ? 'fa-chevron-up' : 'fa-chevron-down'} flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-50 text-xs text-gray-500 transition-all group-hover:bg-violet-100 group-hover:text-violet-700`,
+            );
+            brandIcon.setAttribute('aria-hidden', 'true');
+            brandToggle.append(avatar, brandInfo, brandMeta, brandIcon);
+
+            const brandPanel = createTextElement(
+                'div',
+                `review-brand-panel${expanded ? ' is-open' : ''}`,
+            );
+            brandPanel.id = brandId;
+            brandPanel.dataset.reviewBrandPanel = '';
+            brandPanel.inert = !expanded;
+            brandPanel.setAttribute('aria-hidden', String(!expanded));
+            const brandPanelContent = createTextElement(
+                'div',
+                'review-brand-panel-content',
+            );
+            const brandPanelInner = createTextElement(
+                'div',
+                'border-t border-gray-100 bg-gradient-to-b from-gray-50/80 to-white p-4',
+            );
+            const designCards = createTextElement('div', 'grid grid-cols-1 gap-4');
             designer.designs.forEach((design) => {
                 const designReviews = reviewByDesign.get(design.id) || [];
                 const article = createTextElement(
@@ -1011,7 +1119,7 @@ function renderDesignReviews() {
                         'text-lg font-bold text-gray-900',
                         design.title || 'Untitled design',
                     ),
-                    createTextElement('p', 'mt-1 text-sm text-gray-500', `By ${designer.name}`),
+                    createTextElement('p', 'mt-1 text-sm text-gray-500', `Designed by ${designer.designerName}`),
                 );
                 heading.append(
                     designIdentity,
@@ -1028,11 +1136,11 @@ function renderDesignReviews() {
                     `Reviews (${designReviews.length})`,
                 ));
                 if (designReviews.length) {
-                    const reviewList = createTextElement('div', 'mt-3 space-y-3');
+                    const reviewList = createTextElement('div', 'mt-2 space-y-2');
                     designReviews.forEach((review) => {
                         const profile = review.profiles || {};
                         const reviewerName = review.author_name || profile.full_name || 'ClosetX shopper';
-                        const reviewCard = createTextElement('div', 'rounded-xl bg-gray-50 p-4');
+                        const reviewCard = createTextElement('div', 'rounded-xl bg-gray-50 p-3');
                         const reviewHeading = createTextElement(
                             'div',
                             'flex flex-wrap items-center justify-between gap-2',
@@ -1047,7 +1155,7 @@ function renderDesignReviews() {
                         );
                         const reviewDetails = createTextElement(
                             'div',
-                            'mt-2 flex flex-wrap items-center gap-3',
+                            'mt-1 flex flex-wrap items-center gap-2',
                         );
                         const rating = Number(review.rating);
                         const stars = Number.isFinite(rating)
@@ -1070,7 +1178,7 @@ function renderDesignReviews() {
                             reviewDetails,
                             createTextElement(
                                 'p',
-                                'mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700',
+                                'mt-2 whitespace-pre-wrap text-sm leading-5 text-gray-700',
                                 review.comment,
                             ),
                         );
@@ -1085,15 +1193,36 @@ function renderDesignReviews() {
                     ));
                 }
                 article.append(heading, reviewsSection);
-                cards.append(article);
+                designCards.append(article);
             });
+            brandPanelInner.append(designCards);
+            brandPanelContent.append(brandPanelInner);
+            brandPanel.append(brandPanelContent);
+            brandToggle.addEventListener('click', () => {
+                const willExpand = !brandPanel.classList.contains('is-open');
+                if (willExpand) {
+                    expandedReviewDesignerIds.clear();
+                    designReviewsList.querySelectorAll('[data-review-brand-group]').forEach((group) => {
+                        const otherPanel = group.querySelector('[data-review-brand-panel]');
+                        const otherToggle = group.querySelector('[data-review-brand-toggle]');
+                        if (otherPanel === brandPanel) return;
+                        setReviewPanelExpanded(otherPanel, otherToggle, false);
+                    });
+                    expandedReviewDesignerIds.add(designer.id);
+                } else {
+                    expandedReviewDesignerIds.delete(designer.id);
+                }
+                setReviewPanelExpanded(brandPanel, brandToggle, willExpand);
+            });
+            brandGroup.append(brandToggle, brandPanel);
+            brandList.append(brandGroup);
         });
-        designReviewsList.append(cards);
+        designReviewsList.append(brandList);
     } else if (!designReviewsError) {
         designReviewsList.append(createEmptyState(
             'far fa-star',
-            'No published designs found for this designer.',
-            'Select another designer to view their designs and reviews.',
+            'No published designer designs yet.',
+            'Published designs and their reviews will appear here.',
         ));
     }
     applyCurrentSearch();
