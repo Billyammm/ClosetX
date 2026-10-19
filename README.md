@@ -24,6 +24,25 @@ flutter run -d <device-id> --dart-define-from-file=supabase.env.json
 In VS Code, select **ClosetX (Supabase)** from Run and Debug to launch with
 the project configuration.
 
+### Installing the latest Android app
+
+Always use the repository installer for phone updates. It removes the previous
+release APK, builds the current workspace with `supabase.env.json`, verifies
+that a new APK was produced, and installs that exact APK:
+
+```powershell
+.\scripts\install-latest-app.cmd
+```
+
+To target a different connected Android device:
+
+```powershell
+.\scripts\install-latest-app.cmd -DeviceId <device-id>
+```
+
+Do not run `flutter install` by itself after making changes, because it can
+reuse an older APK already present in the build output.
+
 To use a Chromium browser other than Chrome (for example Brave), set
 `CHROME_EXECUTABLE` to its `.exe` first.
 

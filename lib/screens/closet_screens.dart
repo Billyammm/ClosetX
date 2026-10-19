@@ -12,7 +12,9 @@ import 'account_screens.dart';
 import 'tryon_screen.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({this.isBrowse = false, super.key});
+
+  final bool isBrowse;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -45,7 +47,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Search the edit'),
+        title: Text(widget.isBrowse ? 'Browse designs' : 'Search the edit'),
         actions: [
           CartCountButton(
             onPressed: () => Navigator.of(
@@ -60,7 +62,7 @@ class _SearchScreenState extends State<SearchScreen> {
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
             child: TextField(
               controller: _searchController,
-              autofocus: true,
+              autofocus: !widget.isBrowse,
               onChanged: (_) => setState(() {}),
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
@@ -163,6 +165,65 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
+  Future<void> _addToBag() async {
+    final session = SessionScope.of(context);
+    if (!session.isSignedIn) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (routeContext) => LoginScreen(
+            shopperOnly: true,
+            onContinue: () => Navigator.of(routeContext).pop(),
+          ),
+        ),
+      );
+      if (!mounted || !session.isSignedIn) return;
+    }
+
+    await session.ensureProfileLoaded();
+    if (!mounted) return;
+    if (session.loadError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not verify your shopper account.')),
+      );
+      return;
+    }
+    if (!session.isShopper) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign in with a shopper account to add items.'),
+        ),
+      );
+      return;
+    }
+
+    final store = ClosetStoreScope.of(context);
+    store.addToCart(widget.garment, quantity: _quantity);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Expanded(child: Text('${widget.garment.name} added to your bag')),
+            TextButton(
+              onPressed: () {
+                messenger.hideCurrentSnackBar();
+                navigator.push(
+                  MaterialPageRoute<void>(builder: (_) => const CartScreen()),
+                );
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.onInverseSurface,
+              ),
+              child: const Text('VIEW BAG'),
+            ),
+          ],
+        ),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
   String? get _designId {
     const prefix = 'supabase:';
     return widget.garment.id.startsWith(prefix)
@@ -183,9 +244,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       if (mounted) setState(() => _reviews = reviews);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not load reviews: $error')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reviews are temporarily unavailable.')),
+        );
       }
     } finally {
       if (mounted) setState(() => _reviewsLoading = false);
@@ -196,7 +257,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final session = SessionScope.of(context);
     if (!session.isSignedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sign in to rate and comment on a design.')),
+        const SnackBar(
+          content: Text('Sign in to rate and comment on a design.'),
+        ),
       );
       return;
     }
@@ -207,7 +270,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text(existing == null ? 'Rate this design' : 'Edit your review'),
+          title: Text(
+            existing == null ? 'Rate this design' : 'Edit your review',
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -268,7 +333,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not save your review: $error')),
+          const SnackBar(
+            content: Text('Could not save your review right now.'),
+          ),
         );
       }
     } finally {
@@ -411,41 +478,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: () {
-                        store.addToCart(garment, quantity: _quantity);
-                        final navigator = Navigator.of(context);
-                        final messenger = ScaffoldMessenger.of(context);
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    '${garment.name} added to your bag',
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    messenger.hideCurrentSnackBar();
-                                    navigator.push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => const CartScreen(),
-                                      ),
-                                    );
-                                  },
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Theme.of(
-                                      context,
-                                    ).colorScheme.onInverseSurface,
-                                  ),
-                                  child: const Text('VIEW BAG'),
-                                ),
-                              ],
-                            ),
-                            duration: const Duration(seconds: 4),
-                          ),
-                        );
-                      },
+                      onPressed: _addToBag,
                       icon: const Icon(Icons.shopping_bag_outlined),
                       label: const Text('Add to bag'),
                       style: FilledButton.styleFrom(
@@ -536,7 +569,9 @@ class _DesignReviews extends StatelessWidget {
             TextButton.icon(
               onPressed: onReview,
               icon: const Icon(Icons.rate_review_outlined, size: 18),
-              label: Text(reviews.any((review) => review.isMine) ? 'Edit' : 'Review'),
+              label: Text(
+                reviews.any((review) => review.isMine) ? 'Edit' : 'Review',
+              ),
             ),
           ],
         ),
@@ -554,50 +589,57 @@ class _DesignReviews extends StatelessWidget {
             ),
           )
         else
-          ...reviews.take(3).map(
-            (review) => Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: paper,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: line),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+          ...reviews
+              .take(3)
+              .map(
+                (review) => Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: paper,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: line),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Text(
-                              review.authorName,
-                              style: const TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ),
                           Row(
                             children: [
-                              for (var star = 1; star <= 5; star++)
-                                Icon(
-                                  star <= review.rating
-                                      ? Icons.star_rounded
-                                      : Icons.star_border_rounded,
-                                  size: 16,
-                                  color: accent,
+                              Expanded(
+                                child: Text(
+                                  review.authorName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
+                              ),
+                              Row(
+                                children: [
+                                  for (var star = 1; star <= 5; star++)
+                                    Icon(
+                                      star <= review.rating
+                                          ? Icons.star_rounded
+                                          : Icons.star_border_rounded,
+                                      size: 16,
+                                      color: accent,
+                                    ),
+                                ],
+                              ),
                             ],
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            review.comment,
+                            style: const TextStyle(color: muted),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 5),
-                      Text(review.comment, style: const TextStyle(color: muted)),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
       ],
     );
   }
@@ -989,9 +1031,9 @@ class ProfileScreen extends StatelessWidget {
             icon: Icons.shopping_bag_outlined,
             title: 'Shopping bag',
             subtitle: '${store.cartCount} pieces',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const CartScreen()),
-            ),
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => const CartScreen())),
           ),
         ],
         _ProfileOption(
@@ -1089,9 +1131,9 @@ class _AccountCard extends StatelessWidget {
       await SessionScope.of(context).signOut();
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not sign out: $error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not sign out: $error')));
       }
     }
   }

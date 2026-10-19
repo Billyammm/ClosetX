@@ -12,6 +12,7 @@ class Garment {
     required this.impact,
     required this.description,
     this.saveCount = 0,
+    this.ratingAverage = 0,
     this.backImageUrl,
     this.shirtColorHex,
     this.designerLogoUrl,
@@ -30,6 +31,7 @@ class Garment {
   final String impact;
   final String description;
   final int saveCount;
+  final double ratingAverage;
   final String? backImageUrl;
 
   /// Fabric colour of the 3D shirt, as `#RRGGBB`.

@@ -342,12 +342,21 @@ class _LoginScreenState extends State<LoginScreen> {
       final password = _passwordController.text;
       if (_isCreatingAccount) {
         final isDesignerApplication = _role == AccountRole.designer;
-        final outcome = await session.signUp(
-          email: email,
-          password: password,
-          fullName: _nameController.text.trim(),
-          role: _role,
-        );
+        final fullName = _nameController.text.trim();
+        final outcome = isDesignerApplication
+            ? await session.signUp(
+                email: email,
+                password: password,
+                fullName: fullName,
+                role: _role,
+              )
+            : await session
+                  .signUpShopper(
+                    email: email,
+                    password: password,
+                    fullName: fullName,
+                  )
+                  .then((_) => SignUpOutcome.signedIn);
         if (!mounted) return;
         if (outcome == SignUpOutcome.confirmEmail) {
           setState(() => _isCreatingAccount = false);
@@ -436,12 +445,16 @@ class _GoogleRoleSetupScreenState extends State<GoogleRoleSetupScreen> {
                   ),
                   const SizedBox(height: 24),
                   FilledButton(
-                    onPressed: _isBusy ? null : () => _choose(AccountRole.shopper),
+                    onPressed: _isBusy
+                        ? null
+                        : () => _choose(AccountRole.shopper),
                     child: const Text('Continue as shopper'),
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton(
-                    onPressed: _isBusy ? null : () => _choose(AccountRole.designer),
+                    onPressed: _isBusy
+                        ? null
+                        : () => _choose(AccountRole.designer),
                     child: const Text('Apply as designer'),
                   ),
                 ],

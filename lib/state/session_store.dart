@@ -49,7 +49,8 @@ class SessionStore extends ChangeNotifier {
   Future<void> _syncUser(User? user) async {
     if (user?.id == _userId) return;
     _userId = user?.id;
-    _needsGoogleRoleSelection = user != null &&
+    _needsGoogleRoleSelection =
+        user != null &&
         (user.appMetadata['provider'] == 'google' ||
             user.identities?.any((identity) => identity.provider == 'google') ==
                 true) &&
@@ -114,7 +115,10 @@ class SessionStore extends ChangeNotifier {
       throw const AuthException('This Google account has already been set up.');
     }
     if (role == AccountRole.designer) {
-      await _client.rpc('set_initial_google_role', params: {'new_role': role.name});
+      await _client.rpc(
+        'set_initial_google_role',
+        params: {'new_role': role.name},
+      );
     }
     await _client.auth.updateUser(
       UserAttributes(data: {'closetx_role_initialized': true}),
@@ -141,6 +145,26 @@ class SessionStore extends ChangeNotifier {
     await _syncUser(response.user);
     await ensureProfileLoaded();
     return SignUpOutcome.signedIn;
+  }
+
+  Future<void> signUpShopper({
+    required String email,
+    required String password,
+    required String fullName,
+  }) async {
+    final response = await _client.functions.invoke(
+      'create-shopper-account',
+      body: {'email': email, 'password': password, 'fullName': fullName},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final error = response.data is Map ? response.data['error'] : null;
+      throw AuthException(
+        error is String && error.isNotEmpty
+            ? error
+            : 'Could not create the shopper account.',
+      );
+    }
+    await signIn(email: email, password: password);
   }
 
   Future<void> signOut() async {

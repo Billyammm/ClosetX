@@ -73,8 +73,10 @@ class _ClosetShellState extends State<ClosetShell> {
     final isDesigner = SessionScope.of(context).profile?.isDesigner == true;
     final pages = [
       const DiscoverScreen(),
-      isDesigner ? const DesignerStudioScreen() : const SavedScreen(),
-      const ImpactScreen(),
+      isDesigner
+          ? const DesignerStudioScreen()
+          : const SearchScreen(isBrowse: true),
+      if (!isDesigner) const SavedScreen(),
       const ProfileScreen(),
     ];
 
@@ -94,16 +96,15 @@ class _ClosetShellState extends State<ClosetShell> {
           ),
           NavigationDestination(
             icon: Icon(
-              isDesigner
-                  ? Icons.checkroom_outlined
-                  : Icons.bookmark_border_rounded,
+              isDesigner ? Icons.checkroom_outlined : Icons.search_rounded,
             ),
-            label: isDesigner ? 'My Designs' : 'Saved',
+            label: isDesigner ? 'My Designs' : 'Browse',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.eco_outlined),
-            label: 'Impact',
-          ),
+          if (!isDesigner)
+            const NavigationDestination(
+              icon: Icon(Icons.bookmark_border_rounded),
+              label: 'Saved',
+            ),
           const NavigationDestination(
             icon: Icon(Icons.person_outline_rounded),
             label: 'Profile',
