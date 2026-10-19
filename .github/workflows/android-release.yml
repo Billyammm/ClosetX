@@ -91,7 +91,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          cp build/app/outputs/flutter-apk/app-release.apk "ClosetX-${GITHUB_REF_NAME}.apk"
           gh release create "$GITHUB_REF_NAME" \
-            build/app/outputs/flutter-apk/app-release.apk \
+            "ClosetX-${GITHUB_REF_NAME}.apk" \
             --title "ClosetX $GITHUB_REF_NAME" \
             --generate-notes
