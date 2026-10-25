@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -7,15 +8,33 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
+import '../models/garment.dart';
 import '../theme.dart';
 
 bool get isTryOnSupported => Platform.isAndroid;
 
 /// Embeds the bundled three.js / MediaPipe try-on page on Android.
 class TryOnView extends StatefulWidget {
-  const TryOnView({required this.src, super.key});
+  const TryOnView({
+    required this.src,
+    this.shirtColorHex = '#F2F2F2',
+    this.frontAdjustment = const PrintFitAdjustment(),
+    this.backAdjustment = const PrintFitAdjustment(),
+    this.frontArtworkBytes,
+    this.frontArtworkMimeType,
+    this.backArtworkBytes,
+    this.backArtworkMimeType,
+    super.key,
+  });
 
   final String src;
+  final String shirtColorHex;
+  final PrintFitAdjustment frontAdjustment;
+  final PrintFitAdjustment backAdjustment;
+  final Uint8List? frontArtworkBytes;
+  final String? frontArtworkMimeType;
+  final Uint8List? backArtworkBytes;
+  final String? backArtworkMimeType;
 
   @override
   State<TryOnView> createState() => _TryOnViewState();
@@ -27,6 +46,7 @@ class _TryOnViewState extends State<TryOnView> {
   HttpServer? _server;
   String? _loadRequestedSrc;
   Object? _loadError;
+  bool _pageReady = false;
 
   @override
   void initState() {
@@ -35,6 +55,52 @@ class _TryOnViewState extends State<TryOnView> {
       _controller = WebViewController();
       _ready = _initialize();
     }
+  }
+
+  @override
+  void didUpdateWidget(covariant TryOnView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.src != widget.src) {
+      _pageReady = false;
+    } else if (oldWidget.frontArtworkBytes != widget.frontArtworkBytes ||
+        oldWidget.frontArtworkMimeType != widget.frontArtworkMimeType ||
+        oldWidget.backArtworkBytes != widget.backArtworkBytes ||
+        oldWidget.backArtworkMimeType != widget.backArtworkMimeType) {
+      if (_pageReady) {
+        _pageReady = false;
+        unawaited(
+          _controller.reload().catchError((Object error) {
+            debugPrint('Could not reload try-on artwork: $error');
+          }),
+        );
+      }
+    } else if (_pageReady &&
+        (oldWidget.shirtColorHex != widget.shirtColorHex ||
+            oldWidget.frontAdjustment != widget.frontAdjustment ||
+            oldWidget.backAdjustment != widget.backAdjustment)) {
+      _sendDesignUpdate();
+    }
+  }
+
+  void _sendDesignUpdate() {
+    if (!_pageReady) return;
+    final source = Uri.parse(widget.src);
+    final script =
+        '''
+window.postMessage(${jsonEncode({
+          'type': 'closetx:design',
+          'front': source.queryParameters['front'],
+          'back': source.queryParameters['back'],
+          'color': widget.shirtColorHex,
+          'frontAdjustment': {'scale': widget.frontAdjustment.scale, 'offsetX': widget.frontAdjustment.offsetX, 'offsetY': widget.frontAdjustment.offsetY},
+          'backAdjustment': {'scale': widget.backAdjustment.scale, 'offsetX': widget.backAdjustment.offsetX, 'offsetY': widget.backAdjustment.offsetY},
+        })}, window.location.origin);
+''';
+    unawaited(
+      _controller.runJavaScript(script).catchError((Object error) {
+        debugPrint('Could not update try-on preview: $error');
+      }),
+    );
   }
 
   Future<void> _initialize() async {
@@ -51,6 +117,10 @@ class _TryOnViewState extends State<TryOnView> {
     await _controller.setBackgroundColor(paper);
     await _controller.setNavigationDelegate(
       NavigationDelegate(
+        onPageFinished: (_) {
+          _pageReady = true;
+          _sendDesignUpdate();
+        },
         onNavigationRequest: (request) {
           final uri = Uri.tryParse(request.url);
           if (uri != null &&
@@ -82,7 +152,9 @@ class _TryOnViewState extends State<TryOnView> {
             await request.deny();
           }
         } catch (error, stackTrace) {
-          debugPrint('Could not request camera permission: $error\n$stackTrace');
+          debugPrint(
+            'Could not request camera permission: $error\n$stackTrace',
+          );
           await request.deny();
         }
       });
@@ -92,6 +164,26 @@ class _TryOnViewState extends State<TryOnView> {
   Future<void> _serveRequest(HttpRequest request) async {
     if (request.method != 'GET') {
       request.response.statusCode = HttpStatus.methodNotAllowed;
+      await request.response.close();
+      return;
+    }
+
+    final preview = _previewForPath(request.uri.path);
+    if (preview != null) {
+      final bytes = preview.$1;
+      if (bytes == null) {
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+        return;
+      }
+      final extension = preview.$2;
+      request.response.headers
+        ..contentType = ContentType(
+          'image',
+          extension == 'jpg' ? 'jpeg' : extension,
+        )
+        ..set(HttpHeaders.cacheControlHeader, 'no-store');
+      request.response.add(bytes);
       await request.response.close();
       return;
     }
@@ -117,10 +209,32 @@ class _TryOnViewState extends State<TryOnView> {
       );
       await request.response.close();
     } catch (error, stackTrace) {
-      debugPrint('Could not load try-on asset "$assetPath": $error\n$stackTrace');
+      debugPrint(
+        'Could not load try-on asset "$assetPath": $error\n$stackTrace',
+      );
       request.response.statusCode = HttpStatus.internalServerError;
       await request.response.close();
     }
+  }
+
+  (Uint8List?, String)? _previewForPath(String path) {
+    for (final side in ['front', 'back']) {
+      for (final extension in ['png', 'jpg', 'webp']) {
+        if (path != '/tryon/preview/$side.$extension') continue;
+        final bytes = side == 'front'
+            ? widget.frontArtworkBytes
+            : widget.backArtworkBytes;
+        final mimeType = side == 'front'
+            ? widget.frontArtworkMimeType
+            : widget.backArtworkMimeType;
+        if (mimeType == 'image/$extension' ||
+            (extension == 'jpg' && mimeType == 'image/jpeg')) {
+          return (bytes, extension);
+        }
+        return (null, extension);
+      }
+    }
+    return null;
   }
 
   Future<void> _loadPage() async {
@@ -136,6 +250,7 @@ class _TryOnViewState extends State<TryOnView> {
       queryParameters: source.queryParameters,
     );
     try {
+      _pageReady = false;
       await _controller.loadRequest(page);
     } catch (error) {
       if (mounted) setState(() => _loadError = error);

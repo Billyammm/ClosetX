@@ -36,6 +36,8 @@ class NewDesign {
     required this.thumbnail,
     required this.front,
     required this.back,
+    this.frontPrintAdjustment = const PrintFitAdjustment(),
+    this.backPrintAdjustment = const PrintFitAdjustment(),
   });
 
   final String title;
@@ -48,6 +50,8 @@ class NewDesign {
   final DesignImage thumbnail;
   final DesignImage front;
   final DesignImage back;
+  final PrintFitAdjustment frontPrintAdjustment;
+  final PrintFitAdjustment backPrintAdjustment;
 }
 
 class ClosetXRepository {
@@ -55,7 +59,9 @@ class ClosetXRepository {
       'id, designer_id, title, description, price, category, shirt_color, '
       'thumbnail_url, thumbnail_path, front_image_url, back_image_url, '
       'front_image_path, back_image_path, is_published, review_status, '
-      'rejection_reason, brands(name, logo_url)';
+      'rejection_reason, front_print_scale, front_print_offset_x, '
+      'front_print_offset_y, back_print_scale, back_print_offset_x, '
+      'back_print_offset_y, brands(name, logo_url)';
   static const _brandColumns = 'id, name, bio, location, logo_url, logo_path';
 
   SupabaseClient get _client {
@@ -223,6 +229,16 @@ class ClosetXRepository {
       imageUrl: _optionalString(row['thumbnail_url']) ?? frontImageUrl,
       frontImageUrl: frontImageUrl,
       backImageUrl: _optionalString(row['back_image_url']),
+      frontPrintAdjustment: PrintFitAdjustment(
+        scale: _doubleValue(row['front_print_scale'], fallback: 1),
+        offsetX: _doubleValue(row['front_print_offset_x'], fallback: 0),
+        offsetY: _doubleValue(row['front_print_offset_y'], fallback: 0),
+      ),
+      backPrintAdjustment: PrintFitAdjustment(
+        scale: _doubleValue(row['back_print_scale'], fallback: 1),
+        offsetX: _doubleValue(row['back_print_offset_x'], fallback: 0),
+        offsetY: _doubleValue(row['back_print_offset_y'], fallback: 0),
+      ),
       color: _colorFromHex(shirtColorHex),
       shirtColorHex: shirtColorHex,
       impact: 'Ready for 3D try-on',
@@ -401,6 +417,12 @@ class ClosetXRepository {
         'back_image_url': storage.getPublicUrl(backPath),
         'front_image_path': frontPath,
         'back_image_path': backPath,
+        'front_print_scale': design.frontPrintAdjustment.scale,
+        'front_print_offset_x': design.frontPrintAdjustment.offsetX,
+        'front_print_offset_y': design.frontPrintAdjustment.offsetY,
+        'back_print_scale': design.backPrintAdjustment.scale,
+        'back_print_offset_x': design.backPrintAdjustment.offsetX,
+        'back_print_offset_y': design.backPrintAdjustment.offsetY,
       });
     } catch (_) {
       if (uploaded.isNotEmpty) {
@@ -517,6 +539,9 @@ class ClosetXRepository {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
   }
+
+  double _doubleValue(Object? value, {required double fallback}) =>
+      value is num ? value.toDouble() : fallback;
 }
 
 Color _colorFromHex(String hex) {

@@ -1,5 +1,17 @@
 import 'package:flutter/material.dart';
 
+class PrintFitAdjustment {
+  const PrintFitAdjustment({
+    this.scale = 1,
+    this.offsetX = 0,
+    this.offsetY = 0,
+  });
+
+  final double scale;
+  final double offsetX;
+  final double offsetY;
+}
+
 class Garment {
   const Garment({
     required this.id,
@@ -18,6 +30,8 @@ class Garment {
     this.designerLogoUrl,
     this.designerId,
     this.frontImageUrl,
+    this.frontPrintAdjustment = const PrintFitAdjustment(),
+    this.backPrintAdjustment = const PrintFitAdjustment(),
   });
 
   final String id;
@@ -47,6 +61,9 @@ class Garment {
   /// Front artwork printed on the 3D shirt. Falls back to [imageUrl] for
   /// garments without separate artwork.
   final String? frontImageUrl;
+
+  final PrintFitAdjustment frontPrintAdjustment;
+  final PrintFitAdjustment backPrintAdjustment;
 
   String get frontArtworkUrl => frontImageUrl ?? imageUrl;
 
