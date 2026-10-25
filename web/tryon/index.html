@@ -53,9 +53,9 @@ const MEDIAPIPE_VERSION = '1.0.1';
 const POSE_MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
-// Print areas in the shirt's rest-pose object space (metres). +Z is the front.
-const FRONT_PRINT_BOX = { x0: -0.13, x1: 0.13, y0: 1.03, y1: 1.40 };
-const BACK_PRINT_BOX = { x0: -0.14, x1: 0.14, y0: 1.00, y1: 1.44 };
+// Full front/back shirt bounds, including sleeves, in rest-pose metres.
+const FRONT_PRINT_BOX = { x0: -0.43, x1: 0.43, y0: 0.89, y1: 1.55 };
+const BACK_PRINT_BOX = { x0: -0.43, x1: 0.43, y0: 0.89, y1: 1.55 };
 
 const params = new URLSearchParams(location.search);
 const mode = params.get('mode') === 'camera' ? 'camera' : '3d';
@@ -105,16 +105,18 @@ function showSide(side) {
 }
 if (mode === '3d') {
   camera = new THREE.PerspectiveCamera(32, 1, 0.05, 20);
-  camera.position.set(0.35, 1.3, 1.75);
+  const autoRotate = params.get('autoRotate') !== 'false';
+  camera.position.set(autoRotate ? 0.35 : 0, 1.3, 1.75);
   controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(0, 1.21, 0);
   controls.enableDamping = true;
   controls.minDistance = 0.7;
   controls.maxDistance = 6;
-  controls.autoRotate = true;
+  controls.autoRotate = autoRotate;
   controls.autoRotateSpeed = 1.2;
   controls.addEventListener('start', () => { controls.autoRotate = false; viewGoal = null; markView(null); });
   controls.update();
+  if (!autoRotate) markView('front');
 } else {
   document.body.classList.add('camera');
   // Orthographic camera in screen pixels, origin at the centre, +Y up.
@@ -175,12 +177,11 @@ const shirtMaterial = new THREE.MeshStandardMaterial({
 shirtMaterial.onBeforeCompile = (shader) => {
   Object.assign(shader.uniforms, printUniforms);
   shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', '#include <common>\nvarying vec3 vRestPos;\nvarying vec3 vRestNormal;')
-    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRestPos = position;\nvRestNormal = normal;');
+      .replace('#include <common>', '#include <common>\nvarying vec3 vRestPos;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRestPos = position;');
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', `#include <common>
 varying vec3 vRestPos;
-varying vec3 vRestNormal;
 uniform sampler2D uFront;
 uniform sampler2D uBack;
 uniform float uHasFront;
@@ -207,53 +208,125 @@ if (uUseMask > 0.5) {
 }
 if (gl_FrontFacing) {
   vec4 printColor = vec4(0.0);
-  // Position check skips the shirt's inner wall (its normals face inward).
-  if (uHasFront > 0.5 && vRestNormal.z > 0.25 && vRestPos.z > 0.0) {
+  // Project each side across its half of the fabric, including the curved sleeves.
+  if (uHasFront > 0.5 && vRestPos.z > -0.02) {
     printColor = closetxPrint(uFront, uFrontRect, (vRestPos.x - uFrontRect.x) / (uFrontRect.z - uFrontRect.x));
-  } else if (uHasBack > 0.5 && vRestNormal.z < -0.25 && vRestPos.z < 0.0) {
+  } else if (uHasBack > 0.5 && vRestPos.z < 0.02) {
     printColor = closetxPrint(uBack, uBackRect, (uBackRect.z - vRestPos.x) / (uBackRect.z - uBackRect.x));
   }
   diffuseColor.rgb = mix(diffuseColor.rgb, printColor.rgb, printColor.a);
 }`);
 };
 
-// Fit the artwork inside its print box (keeping its aspect), aligned to the top.
-function fitRect(box, image) {
+// Map the full artwork canvas to the shirt bounds; adjustments scale around
+// the shirt centre so reset always fills from neckline to hem and sleeve edges.
+function fitRect(box, adjustment = {}) {
   const bw = box.x1 - box.x0, bh = box.y1 - box.y0;
-  const aspect = image.width / image.height;
-  let w = bw, h = bw / aspect;
-  if (h > bh) { h = bh; w = bh * aspect; }
-  const x0 = box.x0 + (bw - w) / 2;
-  return new THREE.Vector4(x0, box.y1 - h, x0 + w, box.y1);
+  const scale = Number.isFinite(adjustment.scale) ? adjustment.scale : 1;
+  const offsetX = Number.isFinite(adjustment.offsetX) ? adjustment.offsetX : 0;
+  const offsetY = Number.isFinite(adjustment.offsetY) ? adjustment.offsetY : 0;
+  const centerX = (box.x0 + box.x1) / 2 + offsetX * bw;
+  const centerY = (box.y0 + box.y1) / 2 + offsetY * bh;
+  const halfWidth = bw * scale / 2;
+  const halfHeight = bh * scale / 2;
+  return new THREE.Vector4(
+    centerX - halfWidth,
+    centerY - halfHeight,
+    centerX + halfWidth,
+    centerY + halfHeight,
+  );
 }
 
 const textureLoader = new THREE.TextureLoader();
 textureLoader.setCrossOrigin('anonymous');
+const printTextures = {
+  front: { url: null, textureUrl: null, texture: null, generation: 0, adjustment: null, loading: null },
+  back: { url: null, textureUrl: null, texture: null, generation: 0, adjustment: null, loading: null },
+};
 
-function loadPrint(url, side) {
+function applyPrintTexture(side, state, texture, adjustment) {
+  const box = side === 'front' ? FRONT_PRINT_BOX : BACK_PRINT_BOX;
+  const textureKey = side === 'front' ? 'uFront' : 'uBack';
+  const rectKey = side === 'front' ? 'uFrontRect' : 'uBackRect';
   const hasKey = side === 'front' ? 'uHasFront' : 'uHasBack';
-  if (!url) { printUniforms[hasKey].value = 0; return Promise.resolve(); }
-  return new Promise((resolve) => {
+  printUniforms[rectKey].value = fitRect(box, adjustment);
+  printUniforms[textureKey].value = texture;
+  printUniforms[hasKey].value = 1;
+}
+
+function adjustmentFromParams(side) {
+  const numberParam = (name) => {
+    const value = Number(params.get(name));
+    return Number.isFinite(value) ? value : 0;
+  };
+  return {
+    scale: numberParam(`${side}Scale`) || 1,
+    offsetX: numberParam(`${side}OffsetX`),
+    offsetY: numberParam(`${side}OffsetY`),
+  };
+}
+
+function loadPrint(url, side, adjustment = adjustmentFromParams(side)) {
+  const state = printTextures[side];
+  const hasKey = side === 'front' ? 'uHasFront' : 'uHasBack';
+  state.adjustment = adjustment;
+  if (!url) {
+    state.generation++;
+    state.url = null;
+    state.textureUrl = null;
+    state.loading = null;
+    state.texture?.dispose();
+    state.texture = null;
+    printUniforms[hasKey].value = 0;
+    return Promise.resolve();
+  }
+  if (state.url === url && state.loading) return state.loading;
+  if (state.textureUrl === url && state.texture) {
+    if (state.url !== url) {
+      state.generation++;
+      state.url = url;
+      state.loading = null;
+    }
+    applyPrintTexture(side, state, state.texture, adjustment);
+    return Promise.resolve();
+  }
+
+  state.url = url;
+  const generation = ++state.generation;
+  state.loading = new Promise((resolve) => {
     textureLoader.load(url, (texture) => {
+      if (generation !== state.generation) {
+        texture.dispose();
+        resolve();
+        return;
+      }
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
       texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
-      const box = side === 'front' ? FRONT_PRINT_BOX : BACK_PRINT_BOX;
-      printUniforms[side === 'front' ? 'uFrontRect' : 'uBackRect'].value = fitRect(box, texture.image);
-      printUniforms[side === 'front' ? 'uFront' : 'uBack'].value = texture;
-      printUniforms[hasKey].value = 1;
+      state.texture?.dispose();
+      state.texture = texture;
+      state.textureUrl = url;
+      applyPrintTexture(side, state, texture, state.adjustment);
+      state.loading = null;
       resolve();
     }, undefined, () => {
-      printUniforms[hasKey].value = 0;
-      setStatus(`Could not load the ${side} design image.`);
+      if (generation === state.generation) {
+        state.loading = null;
+        printUniforms[hasKey].value = 0;
+        setStatus(`Could not load the ${side} design image.`);
+      }
       resolve();
     });
   });
+  return state.loading;
 }
 
-function applyDesign({ front, back, color }) {
+function applyDesign({ front, back, color, frontAdjustment, backAdjustment }) {
   if (color && /^#[0-9a-f]{6}$/i.test(color)) shirtMaterial.color.set(color);
-  return Promise.all([loadPrint(front, 'front'), loadPrint(back, 'back')]);
+  return Promise.all([
+    loadPrint(front, 'front', frontAdjustment ?? adjustmentFromParams('front')),
+    loadPrint(back, 'back', backAdjustment ?? adjustmentFromParams('back')),
+  ]);
 }
 
 // Live preview from the Flutter upload screen (same origin only).

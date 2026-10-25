@@ -827,6 +827,15 @@ textarea:focus-visible {
     background: #fff;
 }
 
+.design-3d-preview {
+    display: block;
+    width: 100%;
+    height: clamp(320px, 52vh, 520px);
+    border: 1px solid var(--closetx-line);
+    border-radius: 16px;
+    background: #f7f5f0;
+}
+
 @keyframes closetx-modal-in {
     from { opacity: 0; transform: scale(0.97); }
     to { opacity: 1; transform: scale(1); }

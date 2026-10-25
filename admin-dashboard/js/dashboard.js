@@ -37,6 +37,31 @@ function safeImageSource(value) {
     }
 }
 
+function design3dPreviewUrl(design) {
+    const previewUrl = new URL('tryon/index.html', window.location.href);
+    previewUrl.searchParams.set('mode', '3d');
+    previewUrl.searchParams.set('autoRotate', 'false');
+    const frontImageUrl = safeImageSource(design.front_image_url);
+    const backImageUrl = safeImageSource(design.back_image_url);
+    if (frontImageUrl) previewUrl.searchParams.set('front', frontImageUrl);
+    if (backImageUrl) previewUrl.searchParams.set('back', backImageUrl);
+    for (const [parameter, column] of [
+        ['frontScale', 'front_print_scale'],
+        ['frontOffsetX', 'front_print_offset_x'],
+        ['frontOffsetY', 'front_print_offset_y'],
+        ['backScale', 'back_print_scale'],
+        ['backOffsetX', 'back_print_offset_x'],
+        ['backOffsetY', 'back_print_offset_y'],
+    ]) {
+        const value = Number(design[column]);
+        if (Number.isFinite(value)) previewUrl.searchParams.set(parameter, String(value));
+    }
+    if (/^#[0-9a-f]{6}$/i.test(design.shirt_color || '')) {
+        previewUrl.searchParams.set('color', design.shirt_color);
+    }
+    return previewUrl.href;
+}
+
 function formatDate(value) {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString();
@@ -314,7 +339,7 @@ async function loadShopperCount() {
 async function loadDesigns() {
     const { data, error } = await closetxSupabase
         .from('designs')
-        .select('id, designer_id, brand_id, title, description, front_image_url, back_image_url, thumbnail_url, price, category, shirt_color, is_published, review_status, rejection_reason, created_at, brands(name, bio, location, logo_url)')
+        .select('id, designer_id, brand_id, title, description, front_image_url, back_image_url, thumbnail_url, price, category, shirt_color, front_print_scale, front_print_offset_x, front_print_offset_y, back_print_scale, back_print_offset_x, back_print_offset_y, is_published, review_status, rejection_reason, created_at, brands(name, bio, location, logo_url)')
         .order('created_at', { ascending: false });
     if (error) throw new Error(`Could not load designs: ${error.message}`);
 
@@ -791,13 +816,24 @@ function openDesignReview(id) {
     if (!design) return;
     const isPending = design.status === 'pending';
     const modal = document.getElementById('approvalModal');
-    modal.innerHTML = `<div class="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+    const previewUrl = escapeHtml(design3dPreviewUrl(design));
+    modal.innerHTML = `<div class="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
         <div class="flex items-center justify-between border-b border-gray-200 p-5">
             <div><h2 class="text-xl font-bold text-gray-900">${escapeHtml(design.title)}</h2><p class="text-sm text-gray-500">by ${escapeHtml(design.designer?.brand_name)}</p></div>
             <button type="button" data-close-modal class="px-3 py-2 text-gray-500" aria-label="Close">✕</button>
         </div>
         <div class="p-5">
-            <div class="grid grid-cols-2 gap-3"><img src="${safeImageUrl(design.front_image_url)}" alt="Front artwork" class="h-64 w-full rounded-xl object-contain bg-gray-50"><img src="${safeImageUrl(design.back_image_url)}" alt="Back artwork" class="h-64 w-full rounded-xl object-contain bg-gray-50"></div>
+            <section class="mb-5" aria-labelledby="design-3d-preview-heading">
+                <div class="mb-3">
+                    <h3 id="design-3d-preview-heading" class="text-base font-bold text-gray-900">Interactive 3D preview</h3>
+                    <p class="mt-1 text-sm text-gray-500">Drag to rotate the shirt and scroll or pinch to zoom.</p>
+                </div>
+                <iframe src="${previewUrl}" title="Interactive 3D preview of ${escapeHtml(design.title)}" class="design-3d-preview" loading="eager"></iframe>
+            </section>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <figure><img src="${safeImageUrl(design.front_image_url)}" alt="Front artwork" class="h-64 w-full rounded-xl object-contain bg-gray-50"><figcaption class="mt-1 text-center text-xs text-gray-500">Front artwork</figcaption></figure>
+                <figure><img src="${safeImageUrl(design.back_image_url)}" alt="Back artwork" class="h-64 w-full rounded-xl object-contain bg-gray-50"><figcaption class="mt-1 text-center text-xs text-gray-500">Back artwork</figcaption></figure>
+            </div>
             <div class="mt-4 grid grid-cols-2 gap-3 text-sm"><p><strong>Price:</strong> ₱${escapeHtml(Number(design.price || 0).toLocaleString())}</p><p><strong>Category:</strong> ${escapeHtml(design.category || 'T-Shirts')}</p><p><strong>Colour:</strong> ${escapeHtml(design.shirt_color || '')}</p><p><strong>Submitted:</strong> ${escapeHtml(formatDate(design.created_at))}</p></div>
             <p class="mt-4 whitespace-pre-wrap text-sm">${escapeHtml(design.description || 'No description provided.')}</p>
             ${design.rejection_reason ? `<p class="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-800"><strong>Denial reason:</strong> ${escapeHtml(design.rejection_reason)}</p>` : ''}

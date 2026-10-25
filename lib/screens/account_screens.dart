@@ -9,6 +9,7 @@ import '../state/closet_store.dart';
 import '../state/session_store.dart';
 import '../supabase/supabase_config.dart';
 import '../theme.dart';
+import '../utils/artwork_color.dart';
 import '../widgets/closet_widgets.dart';
 import '../widgets/tryon_view.dart';
 import 'tryon_screen.dart';
@@ -1015,6 +1016,7 @@ class _DesignerStudioScreenState extends State<DesignerStudioScreen> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 12),
                       if (isTryOnSupported) ...[
                         const SizedBox(height: 10),
                         Wrap(
@@ -1065,6 +1067,12 @@ const _shirtColors = <String, Color>{
   '#A33A3A': Color(0xFFA33A3A),
 };
 
+String _colorToHex(Color color) =>
+    '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
+
+Color _contrastColor(Color color) =>
+    color.computeLuminance() > 0.45 ? Colors.black : Colors.white;
+
 const _designCategories = ['T-Shirts', 'Graphic Tees', 'Oversized Tees'];
 
 class UploadDesignScreen extends StatefulWidget {
@@ -1079,6 +1087,7 @@ class _UploadDesignScreenState extends State<UploadDesignScreen> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
+  final _shirtColorController = TextEditingController(text: '#F2F2F2');
   final _picker = ImagePicker();
   String _category = _designCategories.first;
   String _shirtColor = _shirtColors.keys.first;
@@ -1087,6 +1096,12 @@ class _UploadDesignScreenState extends State<UploadDesignScreen> {
   DesignImage? _back;
   String? _frontPreviewUrl;
   String? _backPreviewUrl;
+  String _adjustedSide = 'front';
+  PrintFitAdjustment _frontAdjustment = const PrintFitAdjustment();
+  PrintFitAdjustment _backAdjustment = const PrintFitAdjustment();
+  double _draftScale = 1;
+  double _draftOffsetX = 0;
+  double _draftOffsetY = 0;
   bool _isUploading = false;
 
   @override
@@ -1094,6 +1109,7 @@ class _UploadDesignScreenState extends State<UploadDesignScreen> {
     _titleController.dispose();
     _descriptionController.dispose();
     _priceController.dispose();
+    _shirtColorController.dispose();
     for (final url in [_frontPreviewUrl, _backPreviewUrl]) {
       if (url != null) revokePreviewUrl(url);
     }
@@ -1114,12 +1130,193 @@ class _UploadDesignScreenState extends State<UploadDesignScreen> {
         if (_frontPreviewUrl != null) revokePreviewUrl(_frontPreviewUrl!);
         _front = image;
         _frontPreviewUrl = previewUrl;
+        _frontAdjustment = const PrintFitAdjustment();
+        if (_adjustedSide == 'front') _loadAdjustmentDraft(_frontAdjustment);
       } else {
         if (_backPreviewUrl != null) revokePreviewUrl(_backPreviewUrl!);
         _back = image;
         _backPreviewUrl = previewUrl;
+        _backAdjustment = const PrintFitAdjustment();
+        if (_adjustedSide == 'back') _loadAdjustmentDraft(_backAdjustment);
       }
     });
+    await _matchShirtColorToArtwork();
+  }
+
+  void _loadAdjustmentDraft(PrintFitAdjustment adjustment) {
+    _draftScale = adjustment.scale;
+    _draftOffsetX = adjustment.offsetX;
+    _draftOffsetY = adjustment.offsetY;
+  }
+
+  void _saveAdjustmentDraft() {
+    if (_adjustedSide == 'front') {
+      _frontAdjustment = _draftAdjustment;
+    } else {
+      _backAdjustment = _draftAdjustment;
+    }
+  }
+
+  void _resetAdjustment() {
+    setState(() => _loadAdjustmentDraft(const PrintFitAdjustment()));
+  }
+
+  PrintFitAdjustment get _draftAdjustment => PrintFitAdjustment(
+    scale: _draftScale,
+    offsetX: _draftOffsetX,
+    offsetY: _draftOffsetY,
+  );
+
+  PrintFitAdjustment get _previewFrontAdjustment =>
+      _adjustedSide == 'front' ? _draftAdjustment : _frontAdjustment;
+
+  PrintFitAdjustment get _previewBackAdjustment =>
+      _adjustedSide == 'back' ? _draftAdjustment : _backAdjustment;
+
+  void _setShirtColor(String value) {
+    final normalized = value.trim().toUpperCase();
+    if (!RegExp(r'^#[0-9A-F]{6}$').hasMatch(normalized)) {
+      _showMessage(context, 'Enter a colour in #RRGGBB format.');
+      return;
+    }
+    setState(() {
+      _shirtColor = normalized;
+      _shirtColorController.value = TextEditingValue(
+        text: normalized,
+        selection: TextSelection.collapsed(offset: normalized.length),
+      );
+    });
+  }
+
+  Future<void> _matchShirtColorToArtwork() async {
+    final artworkBytes = [
+      if (_front != null) _front!.bytes,
+      if (_back != null) _back!.bytes,
+    ];
+    if (artworkBytes.isEmpty) {
+      _showMessage(context, 'Add front or back artwork first.');
+      return;
+    }
+    try {
+      final color = await dominantArtworkColor(artworkBytes);
+      if (!mounted) return;
+      if (color == null) {
+        _showMessage(
+          context,
+          'Could not find a visible colour in the artwork. Choose a colour manually.',
+        );
+        return;
+      }
+      final hex = _colorToHex(color);
+      setState(() {
+        _shirtColor = hex;
+        _shirtColorController.value = TextEditingValue(
+          text: hex,
+          selection: TextSelection.collapsed(offset: hex.length),
+        );
+      });
+    } catch (error) {
+      if (mounted) {
+        _showMessage(context, 'Could not detect the artwork colour: $error');
+      }
+    }
+  }
+
+  Future<void> _openColorPicker() async {
+    var selected = Color(
+      int.parse(_shirtColor.substring(1), radix: 16) + 0xFF000000,
+    );
+    var hsv = HSVColor.fromColor(selected);
+    final colorController = TextEditingController(text: _shirtColor);
+    final color = await showDialog<Color>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Custom shirt colour'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircleAvatar(radius: 32, backgroundColor: selected),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: colorController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'Colour value',
+                    hintText: '#RRGGBB',
+                  ),
+                  onChanged: (value) {
+                    final normalized = value.trim().toUpperCase();
+                    if (!RegExp(r'^#[0-9A-F]{6}$').hasMatch(normalized)) {
+                      return;
+                    }
+                    setDialogState(() {
+                      selected = Color(
+                        int.parse(normalized.substring(1), radix: 16) +
+                            0xFF000000,
+                      );
+                      hsv = HSVColor.fromColor(selected);
+                    });
+                  },
+                ),
+                _ArtworkFitSlider(
+                  label: 'Hue',
+                  value: hsv.hue,
+                  min: 0,
+                  max: 360,
+                  divisions: 360,
+                  valueLabel: '${hsv.hue.round()}°',
+                  onChanged: (value) => setDialogState(() {
+                    hsv = hsv.withHue(value);
+                    selected = hsv.toColor();
+                    colorController.text = _colorToHex(selected);
+                  }),
+                ),
+                _ArtworkFitSlider(
+                  label: 'Saturation',
+                  value: hsv.saturation,
+                  min: 0,
+                  max: 1,
+                  divisions: 100,
+                  valueLabel: '${(hsv.saturation * 100).round()}%',
+                  onChanged: (value) => setDialogState(() {
+                    hsv = hsv.withSaturation(value);
+                    selected = hsv.toColor();
+                    colorController.text = _colorToHex(selected);
+                  }),
+                ),
+                _ArtworkFitSlider(
+                  label: 'Brightness',
+                  value: hsv.value,
+                  min: 0,
+                  max: 1,
+                  divisions: 100,
+                  valueLabel: '${(hsv.value * 100).round()}%',
+                  onChanged: (value) => setDialogState(() {
+                    hsv = hsv.withValue(value);
+                    selected = hsv.toColor();
+                    colorController.text = _colorToHex(selected);
+                  }),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(selected),
+              child: const Text('Use colour'),
+            ),
+          ],
+        ),
+      ),
+    );
+    colorController.dispose();
+    if (color != null && mounted) _setShirtColor(_colorToHex(color));
   }
 
   @override
@@ -1175,7 +1372,7 @@ class _UploadDesignScreenState extends State<UploadDesignScreen> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'PNGs with a transparent background print cleanest on the shirt.',
+              'Remove the background from your design before uploading. Transparent PNGs print cleanest on the shirt.',
               style: TextStyle(color: muted, fontSize: 12, height: 1.45),
             ),
             const SizedBox(height: 10),
@@ -1198,6 +1395,76 @@ class _UploadDesignScreenState extends State<UploadDesignScreen> {
                 ),
               ],
             ),
+            if (isTryOnSupported) ...[
+              const SizedBox(height: 18),
+              const Text(
+                'Artwork fit',
+                style: TextStyle(
+                  color: ink,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Artwork fills the shirt from neckline to hem and across the sleeves. Adjust it and the 3D preview updates as you move the sliders.',
+                style: TextStyle(color: muted, fontSize: 12, height: 1.45),
+              ),
+              const SizedBox(height: 8),
+              SegmentedButton<String>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: 'front', label: Text('Front')),
+                  ButtonSegment(value: 'back', label: Text('Back')),
+                ],
+                selected: {_adjustedSide},
+                onSelectionChanged: (selection) {
+                  setState(() {
+                    _saveAdjustmentDraft();
+                    _adjustedSide = selection.first;
+                    _loadAdjustmentDraft(
+                      _adjustedSide == 'front'
+                          ? _frontAdjustment
+                          : _backAdjustment,
+                    );
+                  });
+                },
+              ),
+              _ArtworkFitSlider(
+                label: 'Size',
+                value: _draftScale,
+                min: 0.5,
+                max: 2,
+                divisions: 30,
+                valueLabel: '${(_draftScale * 100).round()}%',
+                onChanged: (value) => setState(() => _draftScale = value),
+              ),
+              _ArtworkFitSlider(
+                label: 'Horizontal position',
+                value: _draftOffsetX,
+                min: -0.5,
+                max: 0.5,
+                divisions: 40,
+                valueLabel: '${(_draftOffsetX * 100).round()}%',
+                onChanged: (value) => setState(() => _draftOffsetX = value),
+              ),
+              _ArtworkFitSlider(
+                label: 'Vertical position',
+                value: _draftOffsetY,
+                min: -0.5,
+                max: 0.5,
+                divisions: 40,
+                valueLabel: '${(_draftOffsetY * 100).round()}%',
+                onChanged: (value) => setState(() => _draftOffsetY = value),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: _resetAdjustment,
+                  child: const Text('Fit to whole shirt'),
+                ),
+              ),
+            ],
             const SizedBox(height: 18),
             const Text(
               'Shirt colour',
@@ -1220,7 +1487,7 @@ class _UploadDesignScreenState extends State<UploadDesignScreen> {
                     button: true,
                     child: InkWell(
                       customBorder: const CircleBorder(),
-                      onTap: () => setState(() => _shirtColor = hex),
+                      onTap: () => _setShirtColor(hex),
                       child: Container(
                         width: 36,
                         height: 36,
@@ -1236,6 +1503,54 @@ class _UploadDesignScreenState extends State<UploadDesignScreen> {
                     ),
                   ),
               ],
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _matchShirtColorToArtwork,
+                icon: const Icon(Icons.auto_awesome_rounded),
+                label: const Text('Match shirt to artwork'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _shirtColorController,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(
+                      labelText: 'Custom colour',
+                      hintText: '#RRGGBB',
+                      prefixIcon: Icon(Icons.tag_rounded),
+                    ),
+                    onSubmitted: _setShirtColor,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                IconButton.filledTonal(
+                  tooltip: 'Choose a custom shirt colour',
+                  onPressed: _openColorPicker,
+                  icon: const Icon(Icons.colorize_rounded),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Color(
+                      int.parse(_shirtColor.substring(1), radix: 16) +
+                          0xFF000000,
+                    ),
+                    foregroundColor: _contrastColor(
+                      Color(
+                        int.parse(_shirtColor.substring(1), radix: 16) +
+                            0xFF000000,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'The shirt colour matches the visible artwork by default. Transparent pixels are ignored; you can still choose a colour manually.',
+              style: TextStyle(color: muted, fontSize: 11),
             ),
             if (isTryOnSupported) ...[
               const SizedBox(height: 18),
@@ -1255,10 +1570,25 @@ class _UploadDesignScreenState extends State<UploadDesignScreen> {
                   child: TryOnView(
                     src: tryOnPageUrl(
                       mode: TryOnMode.viewer3d,
-                      frontImageUrl: _frontPreviewUrl,
-                      backImageUrl: _backPreviewUrl,
-                      shirtColorHex: _shirtColor,
+                      autoRotate: false,
+                      frontImageUrl:
+                          _frontPreviewUrl ??
+                          (_front == null
+                              ? null
+                              : '/tryon/preview/front.${_front!.extension}'),
+                      backImageUrl:
+                          _backPreviewUrl ??
+                          (_back == null
+                              ? null
+                              : '/tryon/preview/back.${_back!.extension}'),
                     ),
+                    shirtColorHex: _shirtColor,
+                    frontAdjustment: _previewFrontAdjustment,
+                    backAdjustment: _previewBackAdjustment,
+                    frontArtworkBytes: _front?.bytes,
+                    frontArtworkMimeType: _front?.mimeType,
+                    backArtworkBytes: _back?.bytes,
+                    backArtworkMimeType: _back?.mimeType,
                   ),
                 ),
               ),
@@ -1372,6 +1702,8 @@ class _UploadDesignScreenState extends State<UploadDesignScreen> {
           thumbnail: thumbnail,
           front: front,
           back: back,
+          frontPrintAdjustment: _previewFrontAdjustment,
+          backPrintAdjustment: _previewBackAdjustment,
         ),
       );
       if (mounted) Navigator.of(context).pop(true);
@@ -1381,6 +1713,57 @@ class _UploadDesignScreenState extends State<UploadDesignScreen> {
       if (mounted) setState(() => _isUploading = false);
     }
   }
+}
+
+class _ArtworkFitSlider extends StatelessWidget {
+  const _ArtworkFitSlider({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.valueLabel,
+    required this.onChanged,
+  });
+
+  final String label;
+  final double value;
+  final double min;
+  final double max;
+  final int divisions;
+  final String valueLabel;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(color: ink, fontSize: 12),
+            ),
+          ),
+          Text(
+            valueLabel,
+            style: const TextStyle(
+              color: muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+      Slider(
+        value: value,
+        min: min,
+        max: max,
+        divisions: divisions,
+        onChanged: onChanged,
+      ),
+    ],
+  );
 }
 
 class _ArtworkPicker extends StatelessWidget {

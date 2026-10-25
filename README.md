@@ -136,6 +136,13 @@ For a completely fresh Supabase project, run these migrations in order:
 3. `supabase/migrations/20261007120000_admin_workflows.sql`
 4. `supabase/migrations/20261008120000_shopper_saved_designs.sql`
 5. `supabase/migrations/20261009120000_public_design_popularity.sql`
+6. `supabase/migrations/20261020100000_design_print_fit_adjustments.sql`
+
+For an existing project, run
+`supabase/migrations/20261020100000_design_print_fit_adjustments.sql` before
+deploying this app version. The app and dashboard query and write these columns
+unconditionally; deploying before the migration will break catalog loading and
+design uploads.
 
 To enable persistent designer application decision notifications on an
 existing project, run
@@ -160,6 +167,9 @@ profile status alone.
 The static dashboard is in `admin-dashboard/`. Serve the ClosetX project root
 over HTTP so the dashboard can load `supabase.env.json` from that root (do not
 open the HTML files directly with `file://` or serve only the `web/` folder).
+Before serving locally, run `node admin-dashboard/prepare-tryon.mjs` to copy the
+shared 3D viewer assets into the dashboard directory. Vercel runs this step
+during its build automatically.
 Open `http://localhost:<port>/admin-dashboard/` using your local static-file
 server. Sign in with an account marked as an admin above.
 
@@ -278,9 +288,9 @@ write to their folder, and anyone can read published images.
   (baked normal and AO maps, shape keys `ChestWide`, `WaistWide`, `SleeveWide`,
   `Longer`) and an invisible `Body_Occluder` mannequin on the rig `Hips`,
   `Spine`, `Chest`, `Neck`, `Shoulder/UpperArm/Forearm/Hand .L/.R` and
-  `Hem.F/B/L/R`. Front and back artwork is projected onto the chest and back
-  print areas in the rest pose, so prints follow the cloth. The shirt colour
-  tints the fabric.
+  `Hem.F/B/L/R`. Front and back artwork is projected across each half of the
+  shirt, including curved sleeves, in the rest pose, so prints follow the cloth.
+  Transparent parts of uploaded artwork continue to show the shirt colour.
 - **MediaPipe Pose Landmarker** (`@mediapipe/tasks-vision`) tracks the body.
   Its 3D world landmarks are retargeted onto the rig: hips and chest turn and
   lean in 3D (so turning sideways or around keeps the shirt on), upper arms and
@@ -293,6 +303,15 @@ The page reads `mode` (`3d` or `camera`), `front`, `back` and `color` from its
 query string. It loads three.js, MediaPipe and the pose model from public
 CDNs, so it needs an internet connection. The camera needs a secure context
 (`localhost` or HTTPS).
+
+The design uploader maps the full artwork canvas to the shirt front/back,
+including the curved sleeves, from the neckline down to the hem. This stretches
+the source artwork to the shirt bounds rather than preserving its aspect ratio.
+Transparent parts of an image do not cover the shirt. The shirt colour is
+automatically matched to the most common visible artwork colour across the
+front and back designs; designers can reapply this match or choose a colour
+manually. Designers can adjust each side's size and horizontal/vertical
+position before submitting.
 
 The 3D viewer and camera try-on are available in the web build and on Android.
 Android serves the bundled viewer from a local loopback address so WebView can

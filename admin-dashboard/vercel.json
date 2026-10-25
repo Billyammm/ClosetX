@@ -1,0 +1,4 @@
+{
+  "buildCommand": "node prepare-tryon.mjs",
+  "outputDirectory": "."
+}
