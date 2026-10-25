@@ -240,8 +240,8 @@ function fitRect(box, adjustment = {}) {
 const textureLoader = new THREE.TextureLoader();
 textureLoader.setCrossOrigin('anonymous');
 const printTextures = {
-  front: { url: null, texture: null, generation: 0, adjustment: null, loading: null },
-  back: { url: null, texture: null, generation: 0, adjustment: null, loading: null },
+  front: { url: null, textureUrl: null, texture: null, generation: 0, adjustment: null, loading: null },
+  back: { url: null, textureUrl: null, texture: null, generation: 0, adjustment: null, loading: null },
 };
 
 function applyPrintTexture(side, state, texture, adjustment) {
@@ -273,17 +273,23 @@ function loadPrint(url, side, adjustment = adjustmentFromParams(side)) {
   if (!url) {
     state.generation++;
     state.url = null;
+    state.textureUrl = null;
     state.loading = null;
     state.texture?.dispose();
     state.texture = null;
     printUniforms[hasKey].value = 0;
     return Promise.resolve();
   }
-  if (state.url === url && state.texture) {
+  if (state.url === url && state.loading) return state.loading;
+  if (state.textureUrl === url && state.texture) {
+    if (state.url !== url) {
+      state.generation++;
+      state.url = url;
+      state.loading = null;
+    }
     applyPrintTexture(side, state, state.texture, adjustment);
     return Promise.resolve();
   }
-  if (state.url === url && state.loading) return state.loading;
 
   state.url = url;
   const generation = ++state.generation;
@@ -299,6 +305,7 @@ function loadPrint(url, side, adjustment = adjustmentFromParams(side)) {
       texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
       state.texture?.dispose();
       state.texture = texture;
+      state.textureUrl = url;
       applyPrintTexture(side, state, texture, state.adjustment);
       state.loading = null;
       resolve();

@@ -138,6 +138,12 @@ For a completely fresh Supabase project, run these migrations in order:
 5. `supabase/migrations/20261009120000_public_design_popularity.sql`
 6. `supabase/migrations/20261020100000_design_print_fit_adjustments.sql`
 
+For an existing project, run
+`supabase/migrations/20261020100000_design_print_fit_adjustments.sql` before
+deploying this app version. The app and dashboard query and write these columns
+unconditionally; deploying before the migration will break catalog loading and
+design uploads.
+
 To enable persistent designer application decision notifications on an
 existing project, run
 `supabase/migrations/20261019170000_designer_application_notifications.sql`.
@@ -161,6 +167,9 @@ profile status alone.
 The static dashboard is in `admin-dashboard/`. Serve the ClosetX project root
 over HTTP so the dashboard can load `supabase.env.json` from that root (do not
 open the HTML files directly with `file://` or serve only the `web/` folder).
+Before serving locally, run `node admin-dashboard/prepare-tryon.mjs` to copy the
+shared 3D viewer assets into the dashboard directory. Vercel runs this step
+during its build automatically.
 Open `http://localhost:<port>/admin-dashboard/` using your local static-file
 server. Sign in with an account marked as an admin above.
 
@@ -303,9 +312,6 @@ automatically matched to the most common visible artwork colour across the
 front and back designs; designers can reapply this match or choose a colour
 manually. Designers can adjust each side's size and horizontal/vertical
 position before submitting.
-To store those settings for future catalog and try-on views on an existing
-Supabase project, run
-`supabase/migrations/20261020100000_design_print_fit_adjustments.sql`.
 
 The 3D viewer and camera try-on are available in the web build and on Android.
 Android serves the bundled viewer from a local loopback address so WebView can

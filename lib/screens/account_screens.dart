@@ -1149,6 +1149,14 @@ class _UploadDesignScreenState extends State<UploadDesignScreen> {
     _draftOffsetY = adjustment.offsetY;
   }
 
+  void _saveAdjustmentDraft() {
+    if (_adjustedSide == 'front') {
+      _frontAdjustment = _draftAdjustment;
+    } else {
+      _backAdjustment = _draftAdjustment;
+    }
+  }
+
   void _resetAdjustment() {
     setState(() => _loadAdjustmentDraft(const PrintFitAdjustment()));
   }
@@ -1412,6 +1420,7 @@ class _UploadDesignScreenState extends State<UploadDesignScreen> {
                 selected: {_adjustedSide},
                 onSelectionChanged: (selection) {
                   setState(() {
+                    _saveAdjustmentDraft();
                     _adjustedSide = selection.first;
                     _loadAdjustmentDraft(
                       _adjustedSide == 'front'

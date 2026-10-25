@@ -38,13 +38,24 @@ function safeImageSource(value) {
 }
 
 function design3dPreviewUrl(design) {
-    const previewUrl = new URL('../web/tryon/index.html', window.location.href);
+    const previewUrl = new URL('tryon/index.html', window.location.href);
     previewUrl.searchParams.set('mode', '3d');
     previewUrl.searchParams.set('autoRotate', 'false');
     const frontImageUrl = safeImageSource(design.front_image_url);
     const backImageUrl = safeImageSource(design.back_image_url);
     if (frontImageUrl) previewUrl.searchParams.set('front', frontImageUrl);
     if (backImageUrl) previewUrl.searchParams.set('back', backImageUrl);
+    for (const [parameter, column] of [
+        ['frontScale', 'front_print_scale'],
+        ['frontOffsetX', 'front_print_offset_x'],
+        ['frontOffsetY', 'front_print_offset_y'],
+        ['backScale', 'back_print_scale'],
+        ['backOffsetX', 'back_print_offset_x'],
+        ['backOffsetY', 'back_print_offset_y'],
+    ]) {
+        const value = Number(design[column]);
+        if (Number.isFinite(value)) previewUrl.searchParams.set(parameter, String(value));
+    }
     if (/^#[0-9a-f]{6}$/i.test(design.shirt_color || '')) {
         previewUrl.searchParams.set('color', design.shirt_color);
     }
@@ -328,7 +339,7 @@ async function loadShopperCount() {
 async function loadDesigns() {
     const { data, error } = await closetxSupabase
         .from('designs')
-        .select('id, designer_id, brand_id, title, description, front_image_url, back_image_url, thumbnail_url, price, category, shirt_color, is_published, review_status, rejection_reason, created_at, brands(name, bio, location, logo_url)')
+        .select('id, designer_id, brand_id, title, description, front_image_url, back_image_url, thumbnail_url, price, category, shirt_color, front_print_scale, front_print_offset_x, front_print_offset_y, back_print_scale, back_print_offset_x, back_print_offset_y, is_published, review_status, rejection_reason, created_at, brands(name, bio, location, logo_url)')
         .order('created_at', { ascending: false });
     if (error) throw new Error(`Could not load designs: ${error.message}`);
 
