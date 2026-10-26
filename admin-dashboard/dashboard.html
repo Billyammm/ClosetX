@@ -30,10 +30,10 @@
         <!-- Sidebar -->
         <aside class="dashboard-sidebar w-64 bg-white min-h-screen border-r border-gray-200 flex flex-col">
             <!-- Logo -->
-            <div class="px-6 py-5 border-b border-gray-200">
-                <div class="flex items-center gap-3">
+            <div class="sidebar-brand-header px-6 py-5 border-b border-gray-200">
+                <div class="sidebar-brand-identity flex items-center gap-3">
                     <div class="brand-mark">CX</div>
-                    <div>
+                    <div class="sidebar-brand-copy">
                         <h1 class="text-lg font-bold text-gray-900">ClosetX</h1>
                         <p class="text-xs text-gray-500">Administration</p>
                     </div>
@@ -42,37 +42,47 @@
 
             <!-- Navigation -->
             <nav class="flex-1 p-4 space-y-1">
+                <button
+                    id="sidebar-collapse-toggle"
+                    class="sidebar-collapse-toggle"
+                    type="button"
+                    aria-label="Collapse navigation"
+                    aria-expanded="true"
+                    title="Collapse navigation"
+                >
+                    <i class="fas fa-bars" aria-hidden="true"></i>
+                </button>
                 <p class="nav-caption">WORKSPACE</p>
-                <button onclick="showSection('overview')" id="nav-overview" class="nav-item active w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
-                    <i class="fas fa-chart-line"></i>
+                <button onclick="showSection('overview')" id="nav-overview" class="nav-item active w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all" aria-label="Overview" title="Overview">
+                    <i class="fas fa-chart-line" aria-hidden="true"></i>
                     <span>Overview</span>
                 </button>
-                
-                <button onclick="showSection('applications')" id="nav-applications" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
-                    <i class="fas fa-id-card"></i>
+
+                <button onclick="showSection('applications')" id="nav-applications" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all" aria-label="Applications" title="Applications">
+                    <i class="fas fa-id-card" aria-hidden="true"></i>
                     <span>Applications</span>
                     <span id="applications-badge" class="nav-count">0</span>
                 </button>
 
-                <button onclick="showSection('pending')" id="nav-pending" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
-                    <i class="fas fa-images"></i>
+                <button onclick="showSection('pending')" id="nav-pending" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all" aria-label="Design Overview" title="Design Overview">
+                    <i class="fas fa-images" aria-hidden="true"></i>
                     <span>Design Overview</span>
                     <span id="pending-badge" class="nav-count">0</span>
                 </button>
 
-                <button onclick="showSection('favorites')" id="nav-favorites" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
-                    <i class="fas fa-bookmark"></i>
+                <button onclick="showSection('favorites')" id="nav-favorites" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all" aria-label="Shopper saves" title="Shopper saves">
+                    <i class="fas fa-bookmark" aria-hidden="true"></i>
                     <span>Shopper saves</span>
                 </button>
-                
-                <button onclick="showSection('designers')" id="nav-designers" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
-                    <i class="fas fa-users"></i>
+
+                <button onclick="showSection('designers')" id="nav-designers" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all" aria-label="Designers" title="Designers">
+                    <i class="fas fa-users" aria-hidden="true"></i>
                     <span>Designers</span>
                     <span id="designers-badge" class="nav-count">0</span>
                 </button>
 
-                <button onclick="showSection('feedback')" id="nav-feedback" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all">
-                    <i class="fas fa-comment-dots"></i>
+                <button onclick="showSection('feedback')" id="nav-feedback" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all" aria-label="Feedback" title="Feedback">
+                    <i class="fas fa-comment-dots" aria-hidden="true"></i>
                     <span>Feedback</span>
                     <span id="feedback-badge" class="nav-count">0</span>
                 </button>
@@ -87,8 +97,8 @@
                         <p class="text-xs text-gray-500">Workspace admin</p>
                     </div>
                 </div>
-                <button onclick="logout()" class="w-full rounded-lg px-3 py-2 text-left text-sm text-gray-600 hover:bg-gray-100">
-                    <i class="fas fa-arrow-right-from-bracket mr-2"></i>Sign out
+                <button onclick="logout()" class="sidebar-signout w-full rounded-lg px-3 py-2 text-left text-sm text-gray-600 hover:bg-gray-100" aria-label="Sign out" title="Sign out">
+                    <i class="fas fa-arrow-right-from-bracket mr-2" aria-hidden="true"></i><span>Sign out</span>
                 </button>
             </div>
             <div class="border-t border-gray-200 px-6 py-3 text-xs text-gray-500">

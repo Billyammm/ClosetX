@@ -88,9 +88,93 @@ aside.bg-white,
     position: sticky;
     top: 0;
     height: 100vh;
+    width: 16rem;
     flex-shrink: 0;
     background: #fff;
     border-color: var(--closetx-line);
+    transition: width 200ms ease;
+}
+
+.sidebar-brand-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.dashboard-sidebar.is-collapsed {
+    width: 4.75rem;
+}
+
+.dashboard-sidebar.is-collapsed .sidebar-brand-header {
+    justify-content: center;
+    padding: 1rem 0.5rem;
+}
+
+.dashboard-sidebar.is-collapsed .sidebar-brand-copy,
+.dashboard-sidebar.is-collapsed .nav-caption,
+.dashboard-sidebar.is-collapsed .nav-item > span,
+.dashboard-sidebar.is-collapsed .sidebar-account .mb-3 > div:last-child,
+.dashboard-sidebar.is-collapsed .sidebar-signout > span,
+.dashboard-sidebar.is-collapsed > div:last-child {
+    display: none;
+}
+
+.dashboard-sidebar.is-collapsed nav {
+    padding: 0.75rem 0.5rem;
+}
+
+.sidebar-collapse-toggle {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    margin: 0 0 0.5rem;
+    place-items: center;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--closetx-ink);
+    font-size: 16px;
+    transition: background-color 160ms ease, color 160ms ease;
+}
+
+.sidebar-collapse-toggle:hover {
+    background: #f1f5f9;
+}
+
+.dashboard-sidebar.is-collapsed .sidebar-collapse-toggle {
+    margin-right: auto;
+    margin-left: auto;
+}
+
+.dashboard-sidebar.is-collapsed .nav-item {
+    justify-content: center;
+    gap: 0;
+    padding: 0.75rem 0;
+}
+
+.dashboard-sidebar.is-collapsed .nav-item i {
+    margin: 0;
+}
+
+.dashboard-sidebar.is-collapsed .sidebar-account {
+    padding: 0.75rem 0.5rem;
+}
+
+.dashboard-sidebar.is-collapsed .sidebar-account .mb-3 {
+    justify-content: center;
+    padding: 0;
+}
+
+.dashboard-sidebar.is-collapsed .sidebar-signout {
+    display: grid;
+    justify-items: center;
+    padding: 0.65rem 0;
+}
+
+.dashboard-sidebar.is-collapsed .sidebar-signout i {
+    margin: 0;
 }
 
 .brand-mark,
@@ -1117,6 +1201,49 @@ html[data-theme="dark"] .portfolio-link:hover {
 
     .dashboard-layout nav .nav-caption {
         grid-column: 1 / -1;
+    }
+
+    .dashboard-sidebar,
+    .dashboard-sidebar.is-collapsed {
+        width: 100%;
+        height: auto;
+    }
+
+    .dashboard-sidebar.is-collapsed .sidebar-brand-header {
+        justify-content: flex-start;
+        flex-direction: row;
+        padding: 1.25rem;
+    }
+
+    .dashboard-sidebar.is-collapsed .sidebar-brand-copy,
+    .dashboard-sidebar.is-collapsed .nav-caption,
+    .dashboard-sidebar.is-collapsed .nav-item > span,
+    .dashboard-sidebar.is-collapsed .sidebar-account .mb-3 > div:last-child,
+    .dashboard-sidebar.is-collapsed .sidebar-signout > span,
+    .dashboard-sidebar.is-collapsed > div:last-child {
+        display: initial;
+    }
+
+    .dashboard-sidebar.is-collapsed .sidebar-brand-header {
+        display: flex;
+    }
+
+    .dashboard-sidebar.is-collapsed nav {
+        padding: 1rem;
+    }
+
+    .dashboard-sidebar.is-collapsed .nav-item {
+        justify-content: flex-start;
+        gap: 0.5rem;
+        padding: 0.65rem;
+    }
+
+    .dashboard-sidebar.is-collapsed .nav-item > span[id$="-badge"] {
+        display: inline-flex;
+    }
+
+    .sidebar-collapse-toggle {
+        display: none;
     }
 
     .dashboard-layout nav .nav-item {

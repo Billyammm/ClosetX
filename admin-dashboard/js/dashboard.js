@@ -181,6 +181,36 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function bindDashboardControls() {
     document.getElementById('global-search')?.addEventListener('input', applyCurrentSearch);
+    const sidebar = document.querySelector('.dashboard-sidebar');
+    const sidebarToggle = document.getElementById('sidebar-collapse-toggle');
+    const setSidebarCollapsed = (collapsed) => {
+        sidebar?.classList.toggle('is-collapsed', collapsed);
+        sidebarToggle?.setAttribute('aria-expanded', String(!collapsed));
+        sidebarToggle?.setAttribute(
+            'aria-label',
+            `${collapsed ? 'Expand' : 'Collapse'} navigation`,
+        );
+        if (sidebarToggle) {
+            sidebarToggle.title = `${collapsed ? 'Expand' : 'Collapse'} navigation`;
+        }
+        try {
+            localStorage.setItem('closetx-admin-sidebar-collapsed', String(collapsed));
+        } catch (error) {
+            console.warn('Could not save sidebar preference:', error);
+        }
+    };
+    if (sidebar && sidebarToggle) {
+        try {
+            setSidebarCollapsed(
+                localStorage.getItem('closetx-admin-sidebar-collapsed') === 'true',
+            );
+        } catch (error) {
+            console.warn('Could not load sidebar preference:', error);
+        }
+        sidebarToggle.addEventListener('click', () => {
+            setSidebarCollapsed(!sidebar.classList.contains('is-collapsed'));
+        });
+    }
     document.getElementById('notification-button')?.addEventListener('click', () => {
         const panel = document.getElementById('notification-panel');
         const isHidden = panel?.classList.contains('hidden');
