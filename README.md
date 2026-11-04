@@ -100,14 +100,27 @@ To use a Chromium browser other than Chrome (for example Brave), set
 
 Use `flutter test` to run the tests and `flutter analyze` to check the project.
 
+### App update notifications
+
+Android and iOS builds check the public GitHub releases feed when they start.
+If a newer release is available, ClosetX sends one professional update
+notification per release. Tapping the notification opens the release APK
+download link in the device browser. Notifications require the user to allow
+notifications when prompted.
+
 ## Supabase setup
 
 1. Copy `supabase.env.json.example` to `supabase.env.json` and fill in the
    project URL and the publishable or legacy `anon` key. The file is ignored by
    Git. Never put a `service_role` secret in the app.
-2. In **Authentication → URL Configuration**, add the URL you run the web app
-   on (for example `http://localhost:5000`) to the redirect URLs so email
-   confirmation links return to the app. For quick local testing you can turn
+2. In **Authentication → URL Configuration**, add every URL used by the app to
+   the redirect URLs:
+
+   - The URL you run the web app on (for example `http://localhost:5000`)
+   - `closetx://login-callback/` for Android and iOS Google sign-in
+
+   The mobile redirect must match the value in
+   `lib/state/session_store.dart` exactly. For quick local testing you can turn
    off **Confirm email** instead.
 3. In **Authentication → Users**, set this account's **App metadata** to
    `{"closetx_admin": true}` for each administrator. Admins must sign out and
