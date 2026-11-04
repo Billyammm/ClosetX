@@ -1001,6 +1001,31 @@ html[data-theme="dark"] .admin-table th {
     background-color: #162235 !important;
 }
 
+html[data-theme="dark"] #design-reviews-list .bg-gradient-to-r,
+html[data-theme="dark"] #design-reviews-list .bg-gradient-to-b {
+    background-image: none !important;
+    background-color: #1e293b !important;
+}
+
+html[data-theme="dark"] #design-reviews-list .bg-white {
+    background-color: #1e293b !important;
+}
+
+html[data-theme="dark"] #design-reviews-list .border-gray-100,
+html[data-theme="dark"] #design-reviews-list .border-gray-200,
+html[data-theme="dark"] #design-reviews-list .border-gray-200\/80 {
+    border-color: var(--closetx-line) !important;
+}
+
+html[data-theme="dark"] #design-reviews-list .text-violet-700,
+html[data-theme="dark"] #design-reviews-list .group-hover\:text-violet-800 {
+    color: #c4b5fd !important;
+}
+
+html[data-theme="dark"] #design-reviews-list .bg-violet-50 {
+    background-color: #312e51 !important;
+}
+
 html[data-theme="dark"] .bg-gray-700,
 html[data-theme="dark"] .bg-gray-700\/50,
 html[data-theme="dark"] .bg-gray-800,
