@@ -22,6 +22,14 @@
     padding: 9px 14px; font: 600 12px system-ui, sans-serif; background: rgba(255,255,255,.9);
     color: var(--ink); cursor: pointer; }
   body.camera #switch { display: block; }
+  #brand { position: fixed; left: 14px; top: 14px; display: flex; align-items: center; gap: 8px;
+    padding: 6px 11px 6px 7px; border: 1px solid rgba(234,231,223,.9); border-radius: 999px;
+    background: rgba(255,255,255,.9); color: var(--ink); font: 700 12px system-ui, sans-serif;
+    letter-spacing: .01em; z-index: 2; }
+  #brand-mark { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 8px;
+    background: var(--accent); color: #fff; font-size: 10px; letter-spacing: -.04em; }
+  body.camera #brand { background: rgba(17,17,17,.72); border-color: rgba(255,255,255,.18); color: #fff; }
+  body.camera #brand-mark { background: #d58b72; }
   #views { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); display: flex; gap: 6px; }
   body.camera #views { display: none; }
   #views button { border: 1px solid #EAE7DF; border-radius: 999px; padding: 8px 16px; cursor: pointer;
@@ -37,6 +45,7 @@
 </head>
 <body>
 <div id="stage"><video id="video" playsinline muted></video></div>
+<div id="brand" aria-label="ClosetX"><span id="brand-mark">CX</span><span>ClosetX</span></div>
 <button id="switch" type="button">Switch camera</button>
 <div id="views">
   <button type="button" data-view="front" aria-pressed="false">Front</button>
