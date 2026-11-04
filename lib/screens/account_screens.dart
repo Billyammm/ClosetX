@@ -306,7 +306,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           : Text(
                               _isCreatingAccount
                                   ? 'Create account'
-                                  : 'Continue with Email',
+                                  : 'Log in',
                             ),
                     ),
                     const SizedBox(height: 4),
