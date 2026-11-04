@@ -24,6 +24,26 @@ flutter run -d <device-id> --dart-define-from-file=supabase.env.json
 In VS Code, select **ClosetX (Supabase)** from Run and Debug to launch with
 the project configuration.
 
+### Deploying the web app for iPhone Safari
+
+The shopper web app is deployed separately from the admin dashboard. The
+`Web deployment` GitHub Actions workflow builds Flutter Web and deploys
+`build/web` to Vercel whenever `main` changes.
+
+Create a separate Vercel project for this repository with the project root set
+to the repository root, then add these GitHub Actions secrets:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `VERCEL_TOKEN`
+- `VERCEL_ORG_ID`
+- `VERCEL_PROJECT_ID`
+
+After the workflow succeeds, use the Vercel project's production domain in
+Safari. Add that HTTPS domain to Supabase Authentication → URL Configuration,
+including the site URL and redirect URL, before testing sign-in and email
+confirmation.
+
 ### Installing the latest Android app
 
 Always use the repository installer for phone updates. It removes the previous
