@@ -6,10 +6,15 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $apkPath = Join-Path $projectRoot "build\app\outputs\flutter-apk\app-release.apk"
 $environmentFile = Join-Path $projectRoot "supabase.env.json"
+$signingPropertiesFile = Join-Path $projectRoot "android\key.properties"
 $buildStartedAt = Get-Date
 
 if (-not (Test-Path $environmentFile)) {
     throw "Missing supabase.env.json. Create it before building the app."
+}
+
+if (-not (Test-Path $signingPropertiesFile)) {
+    throw "Android release signing is not configured. Install the signed APK from https://github.com/Billyammm/ClosetX/releases instead. A debug-signed APK cannot update a signed release."
 }
 
 if (Test-Path $apkPath) {

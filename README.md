@@ -43,6 +43,13 @@ To target a different connected Android device:
 Do not run `flutter install` by itself after making changes, because it can
 reuse an older APK already present in the build output.
 
+The installer requires `android\key.properties` so local builds use the same
+release certificate as published APKs. A debug-signed APK cannot update a
+published release and Android will report that the package is different. If
+the app currently installed on a device was built locally with the debug
+certificate, uninstall it once, then install the signed APK from the GitHub
+Release page. Future published releases will update normally.
+
 ### Publishing Android releases for testers
 
 The GitHub Actions workflow builds a signed APK and publishes it as a GitHub
