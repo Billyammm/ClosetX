@@ -135,6 +135,23 @@ class SessionStore extends ChangeNotifier {
     required String fullName,
     required AccountRole role,
   }) async {
+    if (role == AccountRole.designer) {
+      final response = await _client.functions.invoke(
+        'create-designer-account',
+        body: {'email': email, 'password': password, 'fullName': fullName},
+      );
+      if (response.status < 200 || response.status >= 300) {
+        final error = response.data is Map ? response.data['error'] : null;
+        throw AuthException(
+          error is String && error.isNotEmpty
+              ? error
+              : 'Could not create the designer account.',
+        );
+      }
+      await signIn(email: email, password: password);
+      return SignUpOutcome.signedIn;
+    }
+
     final response = await _client.auth.signUp(
       email: email,
       password: password,

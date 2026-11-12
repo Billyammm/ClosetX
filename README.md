@@ -147,8 +147,7 @@ notifications when prompted.
    - `closetx://login-callback/` for Android and iOS Google sign-in
 
    The mobile redirect must match the value in
-   `lib/state/session_store.dart` exactly. For quick local testing you can turn
-   off **Confirm email** instead.
+   `lib/state/session_store.dart` exactly.
 3. In **Authentication → Users**, set this account's **App metadata** to
    `{"closetx_admin": true}` for each administrator. Admins must sign out and
    sign back in after changing app metadata.
@@ -262,6 +261,18 @@ admin, removes the designer's uploaded images, and deletes their Auth account.
 The function uses Supabase's server-side `SUPABASE_SERVICE_ROLE_KEY`; never put
 a service-role key in the dashboard or app. Removing an account permanently
 deletes its profile, brand, and designs as well.
+
+To enable designer signup without an email-confirmation step, deploy the
+`create-designer-account` Edge Function:
+
+```powershell
+supabase functions deploy create-designer-account
+```
+
+It creates the designer as an email-confirmed user, while the designer
+application still requires admin approval before the account can upload
+designs. The function uses Supabase's server-side
+`SUPABASE_SERVICE_ROLE_KEY`; never put that key in the Flutter app.
 
 To enable design removal from the approvals dashboard, deploy the
 `admin-remove-design` Edge Function with

@@ -1163,20 +1163,20 @@ function renderDesignReviews() {
             );
             const brandPanelInner = createTextElement(
                 'div',
-                'border-t border-gray-100 bg-gradient-to-b from-gray-50/80 to-white p-4',
+                'border-t border-gray-100 bg-gradient-to-b from-gray-50/80 to-white p-3',
             );
-            const designCards = createTextElement('div', 'grid grid-cols-1 gap-4');
+            const designCards = createTextElement('div', 'grid grid-cols-1 gap-2');
             designer.designs.forEach((design) => {
                 const designReviews = reviewByDesign.get(design.id) || [];
                 const article = createTextElement(
                     'article',
-                    'rounded-xl border border-gray-200 bg-white p-5',
+                    'rounded-xl border border-gray-200 bg-white p-3',
                 );
                 article.setAttribute('data-searchable', '');
 
                 const heading = createTextElement(
                     'div',
-                    'flex flex-wrap items-start justify-between gap-3',
+                    'flex flex-wrap items-start justify-between gap-2',
                 );
                 const designIdentity = createTextElement('div');
                 designIdentity.append(
@@ -1194,7 +1194,7 @@ function renderDesignReviews() {
 
                 const reviewsSection = createTextElement(
                     'div',
-                    'mt-5 border-t border-gray-100 pt-4',
+                    'mt-3 border-t border-gray-100 pt-3',
                 );
                 reviewsSection.append(createTextElement(
                     'h5',
@@ -1202,11 +1202,11 @@ function renderDesignReviews() {
                     `Reviews (${designReviews.length})`,
                 ));
                 if (designReviews.length) {
-                    const reviewList = createTextElement('div', 'mt-2 space-y-2');
+                    const reviewList = createTextElement('div', 'mt-2 space-y-1');
                     designReviews.forEach((review) => {
                         const profile = review.profiles || {};
                         const reviewerName = review.author_name || profile.full_name || 'ClosetX shopper';
-                        const reviewCard = createTextElement('div', 'rounded-xl bg-gray-50 p-3');
+                        const reviewCard = createTextElement('div', 'rounded-xl bg-gray-50 p-2');
                         const reviewHeading = createTextElement(
                             'div',
                             'flex flex-wrap items-center justify-between gap-2',

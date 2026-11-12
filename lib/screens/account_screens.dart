@@ -75,22 +75,6 @@ Future<void> refreshCatalog(BuildContext context) {
 // Sign in / create account
 // ---------------------------------------------------------------------------
 
-class _GoogleMark extends StatelessWidget {
-  const _GoogleMark();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Text(
-      'G',
-      style: TextStyle(
-        color: Color(0xFF4285F4),
-        fontSize: 22,
-        fontWeight: FontWeight.w700,
-      ),
-    );
-  }
-}
-
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
     required this.onContinue,
@@ -165,56 +149,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 26),
-                    if (!_isCreatingAccount) ...[
-                      OutlinedButton(
-                        onPressed: _isBusy ? null : _signInWithGoogle,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: ink,
-                          minimumSize: const Size(0, 50),
-                          side: const BorderSide(
-                            color: Color(0xFF4285F4),
-                            width: 1.4,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(7),
-                          ),
-                        ),
-                        child: _isBusy
-                            ? const SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _GoogleMark(),
-                                  SizedBox(width: 20),
-                                  Text('Continue with Google'),
-                                ],
-                              ),
-                      ),
-                      const SizedBox(height: 20),
-                      const Row(
-                        children: [
-                          Expanded(child: Divider(color: line)),
-                          Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 14),
-                            child: Text(
-                              'OR',
-                              style: TextStyle(
-                                color: muted,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          Expanded(child: Divider(color: line)),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                    ],
                     if (_isCreatingAccount) ...[
                       TextFormField(
                         controller: _nameController,
@@ -286,9 +220,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     FilledButton(
                       onPressed: _isBusy ? null : _submit,
                       style: FilledButton.styleFrom(
-                        backgroundColor: _isCreatingAccount
-                            ? ink
-                            : const Color(0xFF4A4FE8),
+                        backgroundColor: _isCreatingAccount ? ink : accent,
                         foregroundColor: Colors.white,
                         minimumSize: const Size(0, 52),
                         shape: RoundedRectangleBorder(
@@ -304,18 +236,35 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             )
                           : Text(
-                              _isCreatingAccount
-                                  ? 'Create account'
-                                  : 'Log in',
+                              _isCreatingAccount ? 'Create account' : 'Log in',
                             ),
                     ),
                     const SizedBox(height: 4),
-                    TextButton(
+                    TextButton.icon(
                       onPressed: _isBusy ? null : _toggleAccountMode,
-                      child: Text(
+                      icon: Icon(
+                        _isCreatingAccount
+                            ? Icons.login_rounded
+                            : Icons.person_add_alt_1_rounded,
+                      ),
+                      label: Text(
                         _isCreatingAccount
                             ? 'Already have an account? Sign in'
                             : 'New to ClosetX? Create an account',
+                      ),
+                      style: TextButton.styleFrom(
+                        backgroundColor: sage,
+                        foregroundColor: ink,
+                        minimumSize: const Size(0, 52),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        side: const BorderSide(color: accent, width: 1),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     const Divider(height: 16),
@@ -424,18 +373,10 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
         if (outcome == SignUpOutcome.confirmEmail) {
           setState(() => _isCreatingAccount = false);
-          if (isDesignerApplication) {
-            await _showDesignerApplicationSubmitted(
-              context,
-              email,
-              needsEmailConfirmation: true,
-            );
-          } else {
-            _showMessage(
-              context,
-              'Check $email for a confirmation link, then sign in.',
-            );
-          }
+          _showMessage(
+            context,
+            'Check $email for a confirmation link, then sign in.',
+          );
           return;
         }
         if (isDesignerApplication) {
@@ -446,17 +387,6 @@ class _LoginScreenState extends State<LoginScreen> {
         await session.signIn(email: email, password: password);
       }
       if (mounted) widget.onContinue();
-    } catch (error) {
-      if (mounted) _showMessage(context, _friendlyError(error));
-    } finally {
-      if (mounted) setState(() => _isBusy = false);
-    }
-  }
-
-  Future<void> _signInWithGoogle() async {
-    setState(() => _isBusy = true);
-    try {
-      await SessionScope.of(context).signInWithGoogle();
     } catch (error) {
       if (mounted) _showMessage(context, _friendlyError(error));
     } finally {
@@ -533,20 +463,15 @@ class _GoogleRoleSetupScreenState extends State<GoogleRoleSetupScreen> {
 
 Future<void> _showDesignerApplicationSubmitted(
   BuildContext context,
-  String email, {
-  bool needsEmailConfirmation = false,
-}) async {
+  String email,
+) async {
   await showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
       title: const Text('Application submitted'),
       content: Text(
-        needsEmailConfirmation
-            ? 'Your designer application is pending review. Confirm your email '
-                  'using the link sent to $email, then sign in. We’ll email you '
-                  'when an admin accepts or declines your application.'
-            : 'Your designer application is pending review. We’ll email $email '
-                  'when an admin accepts or declines your application.',
+        'Your designer application is pending review. We’ll email $email '
+        'when an admin accepts or declines your application.',
       ),
       actions: [
         FilledButton(
