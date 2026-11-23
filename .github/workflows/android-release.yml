@@ -70,7 +70,9 @@ jobs:
         run: flutter analyze
 
       - name: Run focused tests
-        run:         flutter test test/designer_notification_test.dart test/closet_store_test.dart test/widget_test.dart
+        run: |
+          flutter test test/designer_notification_test.dart test/closet_store_test.dart
+          flutter test test/widget_test.dart --plain-name "sign in uses email and password without Google option"
 
       - name: Build signed release APK
         env:
