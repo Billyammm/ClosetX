@@ -53,7 +53,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Find your next\nfavourite.'), findsOneWidget);
-    expect(find.text('Most saved designs'), findsOneWidget);
+    expect(find.text('Featured designs'), findsOneWidget);
     if (!isSupabaseConfigured) {
       await tester.scrollUntilVisible(
         find.text('No designs available yet'),
@@ -65,7 +65,7 @@ void main() {
     }
     expect(find.text('Discover'), findsOneWidget);
 
-    await tester.tap(find.text('Impact'));
+    await tester.tap(find.text('Our local edit'));
     await tester.pumpAndSettle();
 
     expect(find.text('A little more\nthoughtful.'), findsOneWidget);
