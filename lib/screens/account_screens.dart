@@ -71,26 +71,6 @@ Future<void> refreshCatalog(BuildContext context) {
   ).loadCatalog(ClosetXRepository().loadPublishedDesigns);
 }
 
-// ---------------------------------------------------------------------------
-// Sign in / create account
-// ---------------------------------------------------------------------------
-
-class _GoogleMark extends StatelessWidget {
-  const _GoogleMark();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Text(
-      'G',
-      style: TextStyle(
-        color: Color(0xFF4285F4),
-        fontSize: 22,
-        fontWeight: FontWeight.w700,
-      ),
-    );
-  }
-}
-
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
     required this.onContinue,
@@ -165,56 +145,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 26),
-                    if (!_isCreatingAccount) ...[
-                      OutlinedButton(
-                        onPressed: _isBusy ? null : _signInWithGoogle,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: ink,
-                          minimumSize: const Size(0, 50),
-                          side: const BorderSide(
-                            color: Color(0xFF4285F4),
-                            width: 1.4,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(7),
-                          ),
-                        ),
-                        child: _isBusy
-                            ? const SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _GoogleMark(),
-                                  SizedBox(width: 20),
-                                  Text('Continue with Google'),
-                                ],
-                              ),
-                      ),
-                      const SizedBox(height: 20),
-                      const Row(
-                        children: [
-                          Expanded(child: Divider(color: line)),
-                          Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 14),
-                            child: Text(
-                              'OR',
-                              style: TextStyle(
-                                color: muted,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          Expanded(child: Divider(color: line)),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                    ],
                     if (_isCreatingAccount) ...[
                       TextFormField(
                         controller: _nameController,
@@ -446,17 +376,6 @@ class _LoginScreenState extends State<LoginScreen> {
         await session.signIn(email: email, password: password);
       }
       if (mounted) widget.onContinue();
-    } catch (error) {
-      if (mounted) _showMessage(context, _friendlyError(error));
-    } finally {
-      if (mounted) setState(() => _isBusy = false);
-    }
-  }
-
-  Future<void> _signInWithGoogle() async {
-    setState(() => _isBusy = true);
-    try {
-      await SessionScope.of(context).signInWithGoogle();
     } catch (error) {
       if (mounted) _showMessage(context, _friendlyError(error));
     } finally {

@@ -5,6 +5,16 @@ import 'package:closetx/main.dart';
 import 'package:closetx/supabase/supabase_config.dart';
 
 void main() {
+  testWidgets('sign in uses email and password without Google option', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const ClosetXApp());
+
+    expect(find.text('Continue with Google'), findsNothing);
+    expect(find.text('Email address'), findsOneWidget);
+    expect(find.text('Password'), findsOneWidget);
+  });
+
   testWidgets('new accounts can choose shopper or designer signup', (
     tester,
   ) async {

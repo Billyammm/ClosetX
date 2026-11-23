@@ -69,7 +69,7 @@ jobs:
         run: flutter analyze
 
       - name: Run focused tests
-        run: flutter test test/designer_notification_test.dart test/closet_store_test.dart
+        run:         flutter test test/designer_notification_test.dart test/closet_store_test.dart test/widget_test.dart
 
       - name: Build signed release APK
         env:
