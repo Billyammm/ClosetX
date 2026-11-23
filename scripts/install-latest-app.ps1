@@ -13,6 +13,22 @@ if (-not (Test-Path $environmentFile)) {
     throw "Missing supabase.env.json. Create it before building the app."
 }
 
+try {
+    $environment = Get-Content $environmentFile -Raw | ConvertFrom-Json
+}
+catch {
+    throw "supabase.env.json is not valid JSON."
+}
+
+$url = [string]$environment.SUPABASE_URL
+$key = [string]$environment.SUPABASE_ANON_KEY
+if ([string]::IsNullOrWhiteSpace($url) -or [string]::IsNullOrWhiteSpace($key)) {
+    throw "supabase.env.json must contain SUPABASE_URL and SUPABASE_ANON_KEY."
+}
+if (-not $url.StartsWith("https://", [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "SUPABASE_URL must be an HTTPS URL."
+}
+
 if (-not (Test-Path $signingPropertiesFile)) {
     throw "Android release signing is not configured. Install the signed APK from https://github.com/Billyammm/ClosetX/releases instead. A debug-signed APK cannot update a signed release."
 }

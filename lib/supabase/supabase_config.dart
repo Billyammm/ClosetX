@@ -10,7 +10,12 @@ bool get isSupabaseConfigured =>
     _projectUrl.trim().isNotEmpty && _anonKey.trim().isNotEmpty;
 
 Future<void> initializeSupabase() async {
-  if (!isSupabaseConfigured) return;
+  if (!isSupabaseConfigured) {
+    throw StateError(
+      'Supabase is not configured. Run the app with '
+      '--dart-define-from-file=supabase.env.json.',
+    );
+  }
 
   await Supabase.initialize(url: _projectUrl, publishableKey: _anonKey);
 }

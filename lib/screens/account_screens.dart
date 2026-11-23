@@ -216,9 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     FilledButton(
                       onPressed: _isBusy ? null : _submit,
                       style: FilledButton.styleFrom(
-                        backgroundColor: _isCreatingAccount
-                            ? ink
-                            : brandX,
+                        backgroundColor: _isCreatingAccount ? ink : brandX,
                         foregroundColor: Colors.white,
                         minimumSize: const Size(0, 52),
                         shape: RoundedRectangleBorder(
@@ -234,9 +232,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             )
                           : Text(
-                              _isCreatingAccount
-                                  ? 'Create account'
-                                  : 'Log in',
+                              _isCreatingAccount ? 'Create account' : 'Log in',
                             ),
                     ),
                     const SizedBox(height: 4),
@@ -423,7 +419,7 @@ class _GoogleRoleSetupScreenState extends State<GoogleRoleSetupScreen> {
                   Text('Set up your ClosetX account.', style: headingStyle(29)),
                   const SizedBox(height: 8),
                   const Text(
-                    'Choose how you want to use ClosetX. You can browse as a shopper or apply to become a designer.',
+                    'Choose whether to shop local designs or apply to become a designer.',
                     style: TextStyle(color: muted, height: 1.5),
                   ),
                   const SizedBox(height: 24),
@@ -1530,7 +1526,7 @@ class _UploadDesignScreenState extends State<UploadDesignScreen> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'The shirt colour matches the visible artwork by default. Transparent pixels are ignored; you can still choose a colour manually.',
+              'The shirt colour follows the artwork automatically. Transparent pixels are ignored; a custom colour can be selected.',
               style: TextStyle(color: muted, fontSize: 11),
             ),
             if (isTryOnSupported) ...[

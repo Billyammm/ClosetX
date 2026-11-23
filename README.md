@@ -24,6 +24,10 @@ flutter run -d <device-id> --dart-define-from-file=supabase.env.json
 In VS Code, select **ClosetX (Supabase)** from Run and Debug to launch with
 the project configuration.
 
+ClosetX exits at startup if `SUPABASE_URL` or `SUPABASE_ANON_KEY` is missing.
+Use `--dart-define-from-file=supabase.env.json` or the **ClosetX (Supabase)**
+VS Code configuration rather than running `flutter run` without configuration.
+
 ### Deploying the web app for iPhone Safari
 
 The shopper web app is deployed separately from the admin dashboard. The
@@ -60,8 +64,8 @@ To target a different connected Android device:
 .\scripts\install-latest-app.cmd -DeviceId <device-id>
 ```
 
-Do not run `flutter install` by itself after making changes, because it can
-reuse an older APK already present in the build output.
+The installer is preferred over `flutter install`, since direct installation
+can reuse an outdated APK from the local build output.
 
 The installer requires `android\key.properties` so local builds use the same
 release certificate as published APKs. A debug-signed APK cannot update a

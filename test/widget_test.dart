@@ -1,10 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:closetx/main.dart';
 import 'package:closetx/supabase/supabase_config.dart';
 
 void main() {
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    await initializeSupabase();
+  });
+
   testWidgets('sign in uses email and password without Google option', (
     tester,
   ) async {

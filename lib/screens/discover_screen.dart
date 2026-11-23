@@ -891,7 +891,7 @@ class _DesignerNotificationHistoryState
                                                     ? '“${notification.designTitle ?? 'Your design'}” was approved and is now available to shoppers.'
                                                     : '“${notification.designTitle ?? 'Your design'}” was declined. Reason: ${notification.rejectionReason?.trim().isNotEmpty == true ? notification.rejectionReason! : 'No reason was provided.'}'
                                               : accepted
-                                              ? 'You can now manage your brand and upload designs.'
+                                              ? 'Your brand is ready. You can now upload designs.'
                                               : notification.rejectionReason
                                                         ?.trim()
                                                         .isNotEmpty ==

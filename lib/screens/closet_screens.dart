@@ -1273,7 +1273,7 @@ class _DesignerSection extends StatelessWidget {
               rejected
                   ? (profile.designerRejectionReason?.trim().isNotEmpty == true
                         ? profile.designerRejectionReason!
-                        : 'You can contact us if you have questions.')
+                        : 'Contact ClosetX if you have questions.')
                   : 'We will let you know when your designer access is ready.',
               style: const TextStyle(color: muted, fontSize: 12, height: 1.45),
             ),

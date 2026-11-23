@@ -87,8 +87,8 @@ class SessionStore extends ChangeNotifier {
     final client = supabaseClient;
     if (client == null) {
       throw const AuthException(
-        'This app build has no Supabase settings. Rebuild with '
-        '--dart-define-from-file=supabase.env.json, then install the new build.',
+        'Supabase configuration is missing. Build with '
+        '--dart-define-from-file=supabase.env.json before installing.',
       );
     }
     return client;
