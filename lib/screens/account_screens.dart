@@ -218,7 +218,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: FilledButton.styleFrom(
                         backgroundColor: _isCreatingAccount
                             ? ink
-                            : const Color(0xFF4A4FE8),
+                            : brandX,
                         foregroundColor: Colors.white,
                         minimumSize: const Size(0, 52),
                         shape: RoundedRectangleBorder(

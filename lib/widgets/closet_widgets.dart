@@ -323,7 +323,7 @@ class ClosetLogo extends StatelessWidget {
           TextSpan(text: 'closet'),
           TextSpan(
             text: 'X',
-            style: TextStyle(color: Color(0xFFCF654B)),
+            style: TextStyle(color: brandX),
           ),
         ],
       ),

@@ -5,6 +5,7 @@ const muted = Color(0xFF77766E);
 const paper = Color(0xFFF7F5F0);
 const line = Color(0xFFEAE7DF);
 const accent = Color(0xFFB46750);
+const brandX = Color(0xFFCF654B);
 const sage = Color(0xFFE6E9DF);
 
 ThemeData buildClosetTheme() {
