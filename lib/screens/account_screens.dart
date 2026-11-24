@@ -36,6 +36,10 @@ String _friendlyError(Object error) {
       }
       return 'Invalid email or password. ${error.attemptsLeft} $attemptWord left before a ${error.nextLockSeconds}-second lock.';
     }
+    final serverMessage = error.body['error'];
+    if (serverMessage is String && serverMessage.isNotEmpty) {
+      return serverMessage;
+    }
     return 'Something went wrong. Please try again.';
   }
   if (error is AuthException) return error.message;
