@@ -36,9 +36,23 @@ String _friendlyError(Object error) {
       }
       return 'Invalid email or password. ${error.attemptsLeft} $attemptWord left before a ${error.nextLockSeconds}-second lock.';
     }
-    final serverMessage = error.body['error'];
-    if (serverMessage is String && serverMessage.isNotEmpty) {
-      return serverMessage;
+    for (final key in const ['error', 'message', 'detail', 'msg']) {
+      final serverMessage = error.body[key];
+      if (serverMessage is String && serverMessage.trim().isNotEmpty) {
+        return serverMessage.trim();
+      }
+    }
+    if (error.status == 401) {
+      return 'Invalid email or password.';
+    }
+    if (error.status == 429) {
+      return 'Too many login attempts. Try again later.';
+    }
+    if (error.status == 0) {
+      return 'Could not reach the server. Check your connection and try again.';
+    }
+    if (error.status >= 500) {
+      return 'The server is temporarily unavailable. Please try again.';
     }
     return 'Something went wrong. Please try again.';
   }

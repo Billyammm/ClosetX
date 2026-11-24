@@ -149,10 +149,11 @@ class SessionStore extends ChangeNotifier {
       );
     } catch (error) {
       final dynamic exception = error;
-      final int status = exception.status is int
-          ? exception.status as int
-          : exception.statusCode is int
-          ? exception.statusCode as int
+      final dynamic statusValue = exception.status ?? exception.statusCode;
+      final int status = statusValue is int
+          ? statusValue
+          : statusValue is num
+          ? statusValue.toInt()
           : 0;
       final details = exception.details;
       final context = exception.context;
@@ -163,10 +164,24 @@ class SessionStore extends ChangeNotifier {
         try {
           final decoded = jsonDecode(details);
           if (decoded is Map) body = Map<String, dynamic>.from(decoded);
-        } catch (_) {}
+          if (decoded is String) body = {'error': decoded};
+        } catch (_) {
+          if (details.trim().isNotEmpty) {
+            body = {'error': details.trim()};
+          }
+        }
+        if (body.isEmpty && details.trim().isNotEmpty) {
+          body = {'error': details.trim()};
+        }
       }
       if (body.isEmpty && context is Map) {
         body = Map<String, dynamic>.from(context);
+      }
+      if (body.isEmpty && exception.reasonPhrase is String) {
+        final reasonPhrase = exception.reasonPhrase as String;
+        if (reasonPhrase.trim().isNotEmpty) {
+          body = {'error': reasonPhrase.trim()};
+        }
       }
       throw LoginFailure(status: status, body: body);
     }
