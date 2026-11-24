@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
@@ -11,6 +12,51 @@ import '../supabase/supabase_config.dart';
 /// Result of a sign-up: either signed straight in, or waiting on the
 /// confirmation email (when the Supabase project requires it).
 enum SignUpOutcome { signedIn, confirmEmail }
+
+class LoginFailure implements Exception {
+  const LoginFailure({required this.status, required this.body});
+
+  final int status;
+  final Map<String, dynamic> body;
+
+  bool get adminLocked => body['adminLocked'] == true;
+
+  int get remainingSeconds {
+    final value = body['remainingSeconds'];
+    return value is int
+        ? value
+        : value is num
+        ? value.toInt()
+        : 0;
+  }
+
+  int get attemptsLeft {
+    final value = body['attemptsLeft'];
+    return value is int
+        ? value
+        : value is num
+        ? value.toInt()
+        : 0;
+  }
+
+  int get nextLockSeconds {
+    final value = body['nextLockSeconds'];
+    return value is int
+        ? value
+        : value is num
+        ? value.toInt()
+        : 30;
+  }
+
+  int get lockoutStage {
+    final value = body['stage'];
+    return value is int
+        ? value
+        : value is num
+        ? value.toInt()
+        : 0;
+  }
+}
 
 class SessionStore extends ChangeNotifier {
   SessionStore({ClosetXRepository? repository})
@@ -95,17 +141,41 @@ class SessionStore extends ChangeNotifier {
   }
 
   Future<void> signIn({required String email, required String password}) async {
-    final response = await _client.functions.invoke(
-      'login-with-lockout',
-      body: {'email': email, 'password': password},
-    );
-    if (response.status < 200 || response.status >= 300) {
-      final body = response.data is Map ? response.data as Map : const {};
-      throw AuthException(
-        body['error'] is String && (body['error'] as String).isNotEmpty
-            ? body['error'] as String
-            : 'Invalid email or password',
+    dynamic response;
+    try {
+      response = await _client.functions.invoke(
+        'login-with-lockout',
+        body: {'email': email, 'password': password},
       );
+    } catch (error) {
+      final dynamic exception = error;
+      final int status = exception.status is int
+          ? exception.status as int
+          : exception.statusCode is int
+          ? exception.statusCode as int
+          : 0;
+      final details = exception.details;
+      final context = exception.context;
+      Map<String, dynamic> body = const {};
+      if (details is Map) {
+        body = Map<String, dynamic>.from(details);
+      } else if (details is String) {
+        try {
+          final decoded = jsonDecode(details);
+          if (decoded is Map) body = Map<String, dynamic>.from(decoded);
+        } catch (_) {}
+      }
+      if (body.isEmpty && context is Map) {
+        body = Map<String, dynamic>.from(context);
+      }
+      throw LoginFailure(status: status, body: body);
+    }
+
+    if (response.status < 200 || response.status >= 300) {
+      final body = response.data is Map
+          ? Map<String, dynamic>.from(response.data as Map)
+          : const <String, dynamic>{};
+      throw LoginFailure(status: response.status as int, body: body);
     }
     final body = response.data is Map ? response.data as Map : const {};
     final accessToken = body['accessToken'];

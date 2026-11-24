@@ -118,6 +118,7 @@ Deno.serve(async (request: Request) => {
           error: 'Invalid email or password',
           attemptsLeft: failure.attemptsLeft,
           nextLockSeconds: failure.nextLockSeconds,
+          stage: failure.stage,
         });
       }
     }

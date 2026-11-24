@@ -17,6 +17,27 @@ import '../widgets/tryon_view.dart';
 import 'tryon_screen.dart';
 
 String _friendlyError(Object error) {
+  if (error is LoginFailure) {
+    if (error.status == 423) {
+      if (error.adminLocked) {
+        return 'Too many failed attempts. Please contact an administrator for assistance.';
+      }
+      if (error.remainingSeconds > 0) {
+        return 'Too many failed attempts. Try again in ${error.remainingSeconds} seconds.';
+      }
+    }
+    if (error.status == 401 && error.attemptsLeft > 0) {
+      final attemptWord = error.attemptsLeft == 1 ? 'attempt' : 'attempts';
+      if (error.lockoutStage == 2) {
+        return 'Invalid email or password. ${error.attemptsLeft} $attemptWord left before your account is locked.';
+      }
+      if (error.nextLockSeconds == 60) {
+        return 'Invalid email or password. ${error.attemptsLeft} $attemptWord left before a 1-minute lock.';
+      }
+      return 'Invalid email or password. ${error.attemptsLeft} $attemptWord left before a ${error.nextLockSeconds}-second lock.';
+    }
+    return 'Something went wrong. Please try again.';
+  }
   if (error is AuthException) return error.message;
   if (error is PostgrestException) {
     if (error.code == '23505') return 'That brand name is already taken.';
@@ -273,7 +294,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: Text(
-                          'Try again in $_lockRemaining seconds',
+                          'Too many failed attempts. Try again in $_lockRemaining seconds.',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: Colors.red,
@@ -501,14 +522,16 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) widget.onContinue();
     } catch (error) {
       if (mounted) {
-        final message = _friendlyError(error);
-        final secondsMatch = RegExp(
-          r'Try again in (\d+) seconds',
-          caseSensitive: false,
-        ).firstMatch(message);
-        if (secondsMatch != null) {
-          final seconds = int.tryParse(secondsMatch.group(1) ?? '') ?? 0;
+        if (error is LoginFailure &&
+            error.status == 423 &&
+            !error.adminLocked &&
+            error.remainingSeconds > 0) {
+          final seconds = error.remainingSeconds;
           setState(() => _lockRemaining = seconds);
+          _showMessage(
+            context,
+            'Too many failed attempts. Try again in $seconds seconds.',
+          );
           _lockTimer?.cancel();
           _lockTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
             if (!mounted) {
@@ -516,15 +539,23 @@ class _LoginScreenState extends State<LoginScreen> {
               return;
             }
             setState(() {
-              _lockRemaining--;
+              if (_lockRemaining > 0) _lockRemaining--;
               if (_lockRemaining <= 0) {
                 _lockRemaining = 0;
                 timer.cancel();
               }
             });
           });
+        } else {
+          _showMessage(
+            context,
+            _isCreatingAccount
+                ? _friendlyError(error)
+                : error is LoginFailure
+                ? _friendlyError(error)
+                : 'Something went wrong. Please try again.',
+          );
         }
-        _showMessage(context, message);
       }
     } finally {
       if (mounted) setState(() => _isBusy = false);

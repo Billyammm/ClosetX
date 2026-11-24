@@ -171,7 +171,8 @@ begin
     'locked', false,
     'failedAttempts', new_attempts,
     'attemptsLeft', 3 - new_attempts,
-    'nextLockSeconds', case when new_stage = 0 then 30 when new_stage = 1 then 60 else 60 end
+    'nextLockSeconds', case when new_stage = 0 then 30 when new_stage = 1 then 60 else 60 end,
+    'stage', new_stage
   );
 end;
 $$;
