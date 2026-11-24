@@ -105,11 +105,20 @@ if (loginForm) {
 
         try {
             await closetxSupabaseReady;
-            const { error } = await closetxSupabase.auth.signInWithPassword({
-                email,
-                password,
-            });
+            const { data, error } = await closetxSupabase.functions.invoke(
+                'login-with-lockout',
+                { body: { email, password } },
+            );
             if (error) throw error;
+            if (!data?.accessToken || !data?.refreshToken) {
+                throw new Error('Invalid email or password');
+            }
+            const { error: sessionError } =
+                await closetxSupabase.auth.setSession({
+                    access_token: data.accessToken,
+                    refresh_token: data.refreshToken,
+                });
+            if (sessionError) throw sessionError;
 
             if (!(await isClosetXAdmin())) {
                 const { error: signOutError } = await closetxSupabase.auth.signOut({ scope: 'global' });
@@ -144,10 +153,13 @@ if (backToLoginBtn && resetSection && loginForm) {
 
 async function sendResetEmail(email) {
     await closetxSupabaseReady;
-    const { error } = await closetxSupabase.auth.resetPasswordForEmail(email, {
-        redirectTo: recoveryRedirectUrl,
-    });
+    const { data, error } = await closetxSupabase.functions.invoke(
+        'password-security',
+        { body: { action: 'forgot', email } },
+    );
     if (error) throw error;
+    if (data?.adminLocked) throw new Error('Your account is locked. Please contact an administrator.');
+    return data;
 }
 
 if (resetForm) {

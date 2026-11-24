@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -91,16 +93,31 @@ class _LoginScreenState extends State<LoginScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isCreatingAccount = false;
   bool _isBusy = false;
+  bool _isForgotPassword = false;
+  bool _isResetPassword = false;
+  int _lockRemaining = 0;
+  Timer? _lockTimer;
   AccountRole _role = AccountRole.shopper;
 
   @override
+  void initState() {
+    super.initState();
+    if (Uri.base.queryParameters.containsKey('token')) {
+      _isResetPassword = true;
+    }
+  }
+
+  @override
   void dispose() {
+    _lockTimer?.cancel();
     _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -159,62 +176,113 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 14),
                     ],
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      autofillHints: const [AutofillHints.email],
-                      decoration: const InputDecoration(
-                        labelText: 'Email address',
-                        prefixIcon: Icon(Icons.mail_outline_rounded),
+                    if (!_isResetPassword)
+                      TextFormField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        autofillHints: const [AutofillHints.email],
+                        decoration: const InputDecoration(
+                          labelText: 'Email address',
+                          prefixIcon: Icon(Icons.mail_outline_rounded),
+                        ),
+                        validator: (value) {
+                          final email = value?.trim() ?? '';
+                          if (email.isEmpty) return 'Enter your email address.';
+                          if (!RegExp(
+                            r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                          ).hasMatch(email)) {
+                            return 'Enter a valid email address.';
+                          }
+                          return null;
+                        },
                       ),
-                      validator: (value) {
-                        final email = value?.trim() ?? '';
-                        if (email.isEmpty) return 'Enter your email address.';
-                        if (!RegExp(
-                          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                        ).hasMatch(email)) {
-                          return 'Enter a valid email address.';
-                        }
-                        return null;
-                      },
-                    ),
+                    if (_isResetPassword) ...[
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: _obscurePassword,
+                        decoration: const InputDecoration(
+                          labelText: 'New password',
+                          prefixIcon: Icon(Icons.lock_outline_rounded),
+                        ),
+                        validator: (value) => (value?.length ?? 0) < 6
+                            ? 'Use at least 6 characters.'
+                            : null,
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _confirmPasswordController,
+                        obscureText: _obscurePassword,
+                        decoration: const InputDecoration(
+                          labelText: 'Confirm new password',
+                          prefixIcon: Icon(Icons.lock_reset_rounded),
+                        ),
+                        validator: (value) => value != _passwordController.text
+                            ? 'The passwords do not match.'
+                            : null,
+                      ),
+                    ],
                     const SizedBox(height: 14),
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) => _submit(),
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        prefixIcon: const Icon(Icons.lock_outline_rounded),
-                        suffixIcon: IconButton(
-                          tooltip: _obscurePassword
-                              ? 'Show password'
-                              : 'Hide password',
-                          onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword,
+                    if (!_isForgotPassword && !_isResetPassword)
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: _obscurePassword,
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _submit(),
+                        decoration: InputDecoration(
+                          labelText: 'Password',
+                          prefixIcon: const Icon(Icons.lock_outline_rounded),
+                          suffixIcon: IconButton(
+                            tooltip: _obscurePassword
+                                ? 'Show password'
+                                : 'Hide password',
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
                           ),
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Enter your password.';
+                          }
+                          if (_isCreatingAccount && value.length < 6) {
+                            return 'Use at least 6 characters.';
+                          }
+                          return null;
+                        },
+                      ),
+                    const SizedBox(height: 14),
+                    if (!_isCreatingAccount &&
+                        !_isForgotPassword &&
+                        !_isResetPassword)
+                      TextButton(
+                        onPressed: _isBusy
+                            ? null
+                            : () => setState(() {
+                                _isForgotPassword = true;
+                                _passwordController.clear();
+                              }),
+                        child: const Text('Forgot password?'),
+                      ),
+                    if (_lockRemaining > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Text(
+                          'Try again in $_lockRemaining seconds',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Enter your password.';
-                        }
-                        if (_isCreatingAccount && value.length < 6) {
-                          return 'Use at least 6 characters.';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 14),
                     FilledButton(
-                      onPressed: _isBusy ? null : _submit,
+                      onPressed: _isBusy || _lockRemaining > 0 ? null : _submit,
                       style: FilledButton.styleFrom(
                         backgroundColor: _isCreatingAccount ? ink : brandX,
                         foregroundColor: Colors.white,
@@ -232,14 +300,26 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             )
                           : Text(
-                              _isCreatingAccount ? 'Create account' : 'Log in',
+                              _isResetPassword
+                                  ? 'Update password'
+                                  : _isForgotPassword
+                                  ? 'Send reset link'
+                                  : _isCreatingAccount
+                                  ? 'Create account'
+                                  : 'Log in',
                             ),
                     ),
                     const SizedBox(height: 4),
                     TextButton(
-                      onPressed: _isBusy ? null : _toggleAccountMode,
+                      onPressed: _isBusy
+                          ? null
+                          : _isForgotPassword
+                          ? () => setState(() => _isForgotPassword = false)
+                          : _toggleAccountMode,
                       child: Text(
-                        _isCreatingAccount
+                        _isForgotPassword
+                            ? 'Back to sign in'
+                            : _isCreatingAccount
                             ? 'Already have an account? Sign in'
                             : 'New to ClosetX? Create an account',
                       ),
@@ -324,6 +404,53 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submit() async {
+    if (_isResetPassword) {
+      if (!_formKey.currentState!.validate()) return;
+      setState(() => _isBusy = true);
+      try {
+        final token = Uri.base.queryParameters['token'];
+        if (token == null || token.isEmpty) {
+          throw const AuthException(
+            'This password reset link is invalid or expired.',
+          );
+        }
+        await SessionScope.of(
+          context,
+        ).resetPassword(token: token, password: _passwordController.text);
+        if (!mounted) return;
+        setState(() {
+          _isResetPassword = false;
+          _passwordController.clear();
+          _confirmPasswordController.clear();
+        });
+        _showMessage(
+          context,
+          'Your password was updated. You can now sign in.',
+        );
+      } catch (error) {
+        if (mounted) _showMessage(context, _friendlyError(error));
+      } finally {
+        if (mounted) setState(() => _isBusy = false);
+      }
+      return;
+    }
+    if (_isForgotPassword) {
+      if (!_formKey.currentState!.validate()) return;
+      setState(() => _isBusy = true);
+      try {
+        final message = await SessionScope.of(
+          context,
+        ).requestPasswordReset(email: _emailController.text.trim());
+        if (!mounted) return;
+        _showMessage(context, message);
+        setState(() => _isForgotPassword = false);
+      } catch (error) {
+        if (mounted) _showMessage(context, _friendlyError(error));
+      } finally {
+        if (mounted) setState(() => _isBusy = false);
+      }
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
     final session = SessionScope.of(context);
     setState(() => _isBusy = true);
@@ -373,7 +500,32 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       if (mounted) widget.onContinue();
     } catch (error) {
-      if (mounted) _showMessage(context, _friendlyError(error));
+      if (mounted) {
+        final message = _friendlyError(error);
+        final secondsMatch = RegExp(
+          r'Try again in (\d+) seconds',
+          caseSensitive: false,
+        ).firstMatch(message);
+        if (secondsMatch != null) {
+          final seconds = int.tryParse(secondsMatch.group(1) ?? '') ?? 0;
+          setState(() => _lockRemaining = seconds);
+          _lockTimer?.cancel();
+          _lockTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+            if (!mounted) {
+              timer.cancel();
+              return;
+            }
+            setState(() {
+              _lockRemaining--;
+              if (_lockRemaining <= 0) {
+                _lockRemaining = 0;
+                timer.cancel();
+              }
+            });
+          });
+        }
+        _showMessage(context, message);
+      }
     } finally {
       if (mounted) setState(() => _isBusy = false);
     }

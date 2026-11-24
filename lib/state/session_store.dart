@@ -95,12 +95,68 @@ class SessionStore extends ChangeNotifier {
   }
 
   Future<void> signIn({required String email, required String password}) async {
-    final response = await _client.auth.signInWithPassword(
-      email: email,
-      password: password,
+    final response = await _client.functions.invoke(
+      'login-with-lockout',
+      body: {'email': email, 'password': password},
     );
-    await _syncUser(response.user);
+    if (response.status < 200 || response.status >= 300) {
+      final body = response.data is Map ? response.data as Map : const {};
+      throw AuthException(
+        body['error'] is String && (body['error'] as String).isNotEmpty
+            ? body['error'] as String
+            : 'Invalid email or password',
+      );
+    }
+    final body = response.data is Map ? response.data as Map : const {};
+    final accessToken = body['accessToken'];
+    final refreshToken = body['refreshToken'];
+    if (accessToken is! String || refreshToken is! String) {
+      throw const AuthException('Invalid email or password');
+    }
+    await _client.auth.setSession(refreshToken);
+    await _syncUser(_client.auth.currentUser);
     await ensureProfileLoaded();
+  }
+
+  Future<String> requestPasswordReset({required String email}) async {
+    final response = await _client.functions.invoke(
+      'password-security',
+      body: {'action': 'forgot', 'email': email},
+    );
+    final body = response.data is Map ? response.data as Map : const {};
+    if (response.status < 200 || response.status >= 300) {
+      throw AuthException(
+        body['error'] is String
+            ? body['error'] as String
+            : 'Could not process the password reset request.',
+      );
+    }
+    return body['message'] is String
+        ? body['message'] as String
+        : 'If this account exists, a reset link has been sent';
+  }
+
+  Future<void> resetPassword({
+    required String token,
+    required String password,
+  }) async {
+    final response = await _client.functions.invoke(
+      'password-security',
+      body: {
+        'action': 'reset',
+        'token': token,
+        'password': password,
+        'confirmPassword': password,
+      },
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final body = response.data is Map ? response.data as Map : const {};
+      throw AuthException(
+        body['error'] is String
+            ? body['error'] as String
+            : 'Could not update the password.',
+      );
+    }
   }
 
   Future<void> signInWithGoogle() async {

@@ -12,6 +12,7 @@ let feedbackSort = 'newest';
 let designReviewSort = 'newest';
 const expandedReviewDesignerIds = new Set();
 let notificationSort = 'all';
+let accountNotifications = [];
 
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, (character) => ({
@@ -176,7 +177,10 @@ async function checkAuth() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     bindDashboardControls();
-    if (await checkAuth()) await loadDashboard();
+    if (await checkAuth()) {
+        await loadDashboard();
+        window.setInterval(loadAccountNotifications, 12000);
+    }
 });
 
 function bindDashboardControls() {
@@ -314,6 +318,45 @@ function setReviewPanelExpanded(panel, button, expanded) {
     icon?.classList.toggle('fa-chevron-up', expanded);
 }
 
+async function loadAccountNotifications() {
+    try {
+        await closetxSupabaseReady;
+        const { data, error } = await closetxSupabase.functions.invoke(
+            'admin-account-security',
+            { body: { action: 'list' } },
+        );
+        if (error) throw error;
+        accountNotifications = Array.isArray(data?.notifications) ? data.notifications : [];
+        renderNotifications();
+        const unreadCount = accountNotifications.filter((item) => item.status === 'unread').length;
+        const pendingCount = (allDesigners?.filter((item) => item.application_status === 'pending').length || 0)
+            + (allDesigns?.filter((item) => item.status === 'pending').length || 0);
+        document.getElementById('notification-count').textContent = String(pendingCount + unreadCount);
+    } catch (error) {
+        console.error('Could not load account notifications:', error);
+    }
+}
+
+async function unlockAccount(userId, button) {
+    if (!button) return;
+    button.disabled = true;
+    try {
+        await closetxSupabaseReady;
+        const { data, error } = await closetxSupabase.functions.invoke(
+            'admin-account-security',
+            { body: { action: 'unlock', userId } },
+        );
+        if (error) throw error;
+        if (!data?.success) throw new Error(data?.error || 'Could not unlock account.');
+        await loadAccountNotifications();
+        showDashboardError('');
+    } catch (error) {
+        const message = await edgeFunctionErrorMessage(error);
+        showDashboardError(`Could not unlock account: ${message}`);
+        button.disabled = false;
+    }
+}
+
 async function loadDashboard() {
     clearDashboardError();
     try {
@@ -326,6 +369,7 @@ async function loadDashboard() {
             loadDesignSaveCounts(),
             loadShopperCount(),
         ]);
+        await loadAccountNotifications();
         if (!appFeedbackResult.success) {
             feedbackError = appFeedbackResult.error;
             console.error('Could not load app feedback:', appFeedbackResult.error);
@@ -526,7 +570,9 @@ function renderStats(shopperCount) {
     document.getElementById('applications-badge').textContent = stats.applications;
     document.getElementById('designers-badge').textContent = stats.designers;
     document.getElementById('feedback-badge').textContent = stats.feedback;
-    const totalNotifications = stats.applications + stats.pending;
+    const unreadAccountAlerts =
+        accountNotifications.filter((item) => item.status === 'unread').length;
+    const totalNotifications = stats.applications + stats.pending + unreadAccountAlerts;
     document.getElementById('notification-count').textContent = totalNotifications;
     document.getElementById('notification-button').setAttribute(
         'aria-label',
@@ -574,7 +620,17 @@ function getNotificationItems() {
             section: 'pending',
         }));
 
-    const allItems = [...pendingApplications, ...pendingDesigns]
+    const accountAlerts = accountNotifications.map((item) => ({
+        id: item.user_id,
+        type: 'account',
+        title: item.email || item.username || 'Locked account',
+        subtitle: `Locked ${formatDate(item.created_at)} • IP ${item.ip_address || 'unknown'} • ${item.status}`,
+        created_at: item.created_at,
+        section: 'account',
+        status: item.status,
+    }));
+
+    const allItems = [...pendingApplications, ...pendingDesigns, ...accountAlerts]
         .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
     if (notificationSort === 'application') return allItems.filter((item) => item.type === 'application');
@@ -592,7 +648,18 @@ function renderNotifications() {
         return;
     }
 
-    list.innerHTML = items.map((item) => `
+    list.innerHTML = items.map((item) => item.type === 'account' ? `
+        <div class="notification-item">
+            <span class="notification-bullet account">L</span>
+            <span class="notification-content">
+                <span class="notification-title">${escapeHtml(item.title)}</span>
+                <span class="notification-subtitle">${escapeHtml(item.subtitle)}</span>
+            </span>
+            ${item.status === 'unread'
+                ? `<button type="button" class="row-action" data-unlock-user="${escapeHtml(item.id)}">Unlock account</button>`
+                : '<span class="notification-time">Resolved</span>'}
+        </div>
+    ` : `
         <button type="button" class="notification-item" data-notify-section="${item.section}" data-notify-id="${escapeHtml(item.id)}">
             <span class="notification-bullet ${item.type}">${item.type === 'application' ? 'A' : 'D'}</span>
             <span class="notification-content">
@@ -603,7 +670,7 @@ function renderNotifications() {
         </button>
     `).join('');
 
-    list.querySelectorAll('.notification-item').forEach((button) => {
+    list.querySelectorAll('.notification-item[data-notify-section]').forEach((button) => {
         button.addEventListener('click', () => {
             const section = button.dataset.notifySection;
             const id = button.dataset.notifyId;
@@ -625,6 +692,12 @@ function renderNotifications() {
                 openDesignReview(id);
             }
             document.getElementById('notification-panel')?.classList.add('hidden');
+        });
+    });
+    list.querySelectorAll('[data-unlock-user]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            unlockAccount(button.dataset.unlockUser, button);
         });
     });
 }
