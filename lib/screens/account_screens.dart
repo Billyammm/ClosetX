@@ -499,37 +499,20 @@ class _LoginScreenState extends State<LoginScreen> {
       if (_isCreatingAccount) {
         final isDesignerApplication = _role == AccountRole.designer;
         final fullName = _nameController.text.trim();
-        final outcome = isDesignerApplication
-            ? await session.signUp(
-                email: email,
-                password: password,
-                fullName: fullName,
-                role: _role,
-              )
-            : await session
-                  .signUpShopper(
-                    email: email,
-                    password: password,
-                    fullName: fullName,
-                  )
-                  .then((_) => SignUpOutcome.signedIn);
-        if (!mounted) return;
-        if (outcome == SignUpOutcome.confirmEmail) {
-          setState(() => _isCreatingAccount = false);
-          if (isDesignerApplication) {
-            await _showDesignerApplicationSubmitted(
-              context,
-              email,
-              needsEmailConfirmation: true,
-            );
-          } else {
-            _showMessage(
-              context,
-              'Check $email for a confirmation link, then sign in.',
-            );
-          }
-          return;
+        if (isDesignerApplication) {
+          await session.signUp(
+            email: email,
+            password: password,
+            fullName: fullName,
+          );
+        } else {
+          await session.signUpShopper(
+            email: email,
+            password: password,
+            fullName: fullName,
+          );
         }
+        if (!mounted) return;
         if (isDesignerApplication) {
           await _showDesignerApplicationSubmitted(context, email);
           if (!mounted) return;
@@ -649,20 +632,15 @@ class _GoogleRoleSetupScreenState extends State<GoogleRoleSetupScreen> {
 
 Future<void> _showDesignerApplicationSubmitted(
   BuildContext context,
-  String email, {
-  bool needsEmailConfirmation = false,
-}) async {
+  String email,
+) async {
   await showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
       title: const Text('Application submitted'),
       content: Text(
-        needsEmailConfirmation
-            ? 'Your designer application is pending review. Confirm your email '
-                  'using the link sent to $email, then sign in. We’ll email you '
-                  'when an admin accepts or declines your application.'
-            : 'Your designer application is pending review. We’ll email $email '
-                  'when an admin accepts or declines your application.',
+        'Your designer application is pending review. We’ll email $email '
+        'when an admin accepts or declines your application.',
       ),
       actions: [
         FilledButton(

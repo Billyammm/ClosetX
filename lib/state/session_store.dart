@@ -9,10 +9,6 @@ import '../data/closetx_repository.dart';
 import '../models/account.dart';
 import '../supabase/supabase_config.dart';
 
-/// Result of a sign-up: either signed straight in, or waiting on the
-/// confirmation email (when the Supabase project requires it).
-enum SignUpOutcome { signedIn, confirmEmail }
-
 class LoginFailure implements Exception {
   const LoginFailure({required this.status, required this.body});
 
@@ -247,7 +243,7 @@ class SessionStore extends ChangeNotifier {
   Future<void> signInWithGoogle() async {
     await _client.auth.signInWithOAuth(
       OAuthProvider.google,
-      redirectTo: kIsWeb ? Uri.base.origin : 'closetx://login-callback/',
+      redirectTo: kIsWeb ? closetxWebUrl : 'closetx://login-callback/',
       authScreenLaunchMode: LaunchMode.externalApplication,
     );
   }
@@ -270,23 +266,24 @@ class SessionStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<SignUpOutcome> signUp({
+  Future<void> signUp({
     required String email,
     required String password,
     required String fullName,
-    required AccountRole role,
   }) async {
-    final response = await _client.auth.signUp(
-      email: email,
-      password: password,
-      data: {'full_name': fullName, 'role': role.name},
-      // Send the confirmation link back to this web app.
-      emailRedirectTo: kIsWeb ? Uri.base.origin : null,
+    final response = await _client.functions.invoke(
+      'create-designer-account',
+      body: {'email': email, 'password': password, 'fullName': fullName},
     );
-    if (response.session == null) return SignUpOutcome.confirmEmail;
-    await _syncUser(response.user);
-    await ensureProfileLoaded();
-    return SignUpOutcome.signedIn;
+    if (response.status < 200 || response.status >= 300) {
+      final error = response.data is Map ? response.data['error'] : null;
+      throw AuthException(
+        error is String && error.isNotEmpty
+            ? error
+            : 'Could not create the designer account.',
+      );
+    }
+    await signIn(email: email, password: password);
   }
 
   Future<void> signUpShopper({

@@ -32,7 +32,10 @@ VS Code configuration rather than running `flutter run` without configuration.
 
 The shopper web app is deployed separately from the admin dashboard. The
 `Web deployment` GitHub Actions workflow builds Flutter Web and deploys
-`build/web` to Vercel whenever `main` changes.
+`build/web` to Vercel whenever `main` changes. Production web deployments are
+restricted to `main`, share one cancel-in-progress workflow group, and start
+from a clean Flutter build. The Vercel headers disable caching for the web app
+shell and compiled entry points so browsers fetch the current deployment.
 
 Create a separate Vercel project for this repository with the project root set
 to the repository root, then add these GitHub Actions secrets:
@@ -145,14 +148,29 @@ notifications when prompted.
    project URL and the publishable or legacy `anon` key. The file is ignored by
    Git. Never put a `service_role` secret in the app.
 2. In **Authentication → URL Configuration**, add every URL used by the app to
-   the redirect URLs:
+   the redirect URLs, and set the **Site URL** to
+   `https://web-hazel-theta-87.vercel.app`:
 
+   - `https://web-hazel-theta-87.vercel.app` for the deployed web app
    - The URL you run the web app on (for example `http://localhost:5000`)
    - `closetx://login-callback/` for Android and iOS Google sign-in
 
    The mobile redirect must match the value in
-   `lib/state/session_store.dart` exactly. For quick local testing you can turn
-   off **Confirm email** instead.
+   `lib/state/session_store.dart` exactly. Web Google sign-in always returns to
+   the production URL above, including when started from a Vercel preview.
+   Designer and shopper accounts created by the app are confirmed immediately;
+   email verification is not required. If email confirmation should also be
+   disabled for other Supabase signup flows, turn off **Confirm email** under
+   **Authentication → Providers → Email**. Without confirmation, users can
+   register using an address they do not own. Deploy the designer signup
+   function after linking the Supabase CLI to the project:
+
+   ```powershell
+   supabase functions deploy create-designer-account
+   ```
+
+   Existing unconfirmed accounts must be confirmed once in
+   **Authentication → Users** before they can sign in.
 3. In **Authentication → Users**, set this account's **App metadata** to
    `{"closetx_admin": true}` for each administrator. Admins must sign out and
    sign back in after changing app metadata.

@@ -33,6 +33,9 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Clean previous build output
+        run: flutter clean
+
       - name: Configure Android release signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

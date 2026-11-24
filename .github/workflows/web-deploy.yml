@@ -9,14 +9,14 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: web-deployment-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     name: Build and deploy web app
     runs-on: ubuntu-latest
+    concurrency:
+      group: closetx-web-production
+      cancel-in-progress: true
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -27,6 +27,9 @@ jobs:
           flutter-version: "3.47.9"
           channel: stable
           cache: true
+
+      - name: Clean previous build output
+        run: flutter clean
 
       - name: Install dependencies
         run: flutter pub get
@@ -45,8 +48,10 @@ jobs:
             exit 1
           fi
           flutter build web --release \
+            --build-number="$GITHUB_RUN_NUMBER" \
             --dart-define="SUPABASE_URL=$SUPABASE_URL" \
-            --dart-define="SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
+            --dart-define="SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" \
+            --dart-define="CLOSETX_WEB_URL=https://web-hazel-theta-87.vercel.app"
 
       - name: Deploy to Vercel
         env:
@@ -59,6 +64,7 @@ jobs:
             echo "Add VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID as repository Actions secrets." >&2
             exit 1
           fi
+          cp vercel.json build/web/vercel.json
           mkdir -p build/web/.vercel
           printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > build/web/.vercel/project.json
           npx --yes vercel@latest deploy build/web --prod --yes --token="$VERCEL_TOKEN"

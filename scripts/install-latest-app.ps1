@@ -39,6 +39,11 @@ if (Test-Path $apkPath) {
 
 Push-Location $projectRoot
 try {
+    & flutter clean
+    if ($LASTEXITCODE -ne 0) {
+        throw "Flutter clean failed with exit code $LASTEXITCODE."
+    }
+
     & flutter build apk --release --dart-define-from-file=supabase.env.json
     if ($LASTEXITCODE -ne 0) {
         throw "Flutter release build failed with exit code $LASTEXITCODE."

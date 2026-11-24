@@ -2,6 +2,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 const _projectUrl = String.fromEnvironment('SUPABASE_URL');
 const _anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+const closetxWebUrl = String.fromEnvironment(
+  'CLOSETX_WEB_URL',
+  defaultValue: 'https://web-hazel-theta-87.vercel.app',
+);
 
 /// Public storage bucket that holds designers' front/back artwork.
 const designImagesBucket = 'design-images';
