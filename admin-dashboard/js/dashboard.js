@@ -1006,7 +1006,8 @@ async function removeDesign(id, button) {
         }
     } catch (error) {
         console.error('Could not remove design:', error);
-        showDashboardError(`Could not remove "${design.title}": ${error.message}`);
+        const message = await edgeFunctionErrorMessage(error);
+        showDashboardError(`Could not remove "${design.title}": ${message}`);
         button.disabled = false;
         button.textContent = 'Remove';
     }
@@ -1051,7 +1052,8 @@ async function removeDesigner(id, button) {
         await refreshData();
     } catch (error) {
         console.error('Could not remove designer account:', error);
-        showDashboardError(`Could not remove ${name}'s account: ${error.message}`);
+        const message = await edgeFunctionErrorMessage(error);
+        showDashboardError(`Could not remove ${name}'s account: ${message}`);
         button.disabled = false;
         button.textContent = 'Remove account';
     }

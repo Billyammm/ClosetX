@@ -79,10 +79,20 @@ Deno.serve(async (request: Request) => {
 
   const { data: target, error: targetError } = await adminClient.auth.admin.getUserById(body.designerId);
   if (targetError) {
-    console.error('Could not look up designer Auth account:', targetError);
-    return jsonResponse(500, { error: 'Could not verify the designer Auth account.' });
+    const targetLookupError = targetError as {
+      status?: number;
+      code?: string;
+      message?: string;
+    };
+    const missingUser = targetLookupError.status === 404
+      || targetLookupError.code === 'user_not_found'
+      || /user.*not found|no user/i.test(targetLookupError.message || '');
+    if (!missingUser) {
+      console.error('Could not look up designer Auth account:', targetError);
+      return jsonResponse(500, { error: 'Could not verify the designer Auth account.' });
+    }
   }
-  if (target.user?.app_metadata?.closetx_admin === true) {
+  if (target?.user?.app_metadata?.closetx_admin === true) {
     return jsonResponse(403, { error: 'Administrator accounts cannot be removed from the Designers page.' });
   }
 
@@ -116,10 +126,22 @@ Deno.serve(async (request: Request) => {
     }
   }
 
-  const { error: deleteError } = await adminClient.auth.admin.deleteUser(body.designerId);
-  if (deleteError) {
-    console.error('Could not delete designer Auth account:', deleteError);
-    return jsonResponse(500, { error: 'Uploaded images were removed, but the account could not be deleted. Please retry.' });
+  if (target?.user) {
+    const { error: deleteError } = await adminClient.auth.admin.deleteUser(body.designerId);
+    if (deleteError) {
+      console.error('Could not delete designer Auth account:', deleteError);
+      return jsonResponse(500, { error: 'Uploaded images were removed, but the account could not be deleted. Please retry.' });
+    }
+  } else {
+    // Some older or partially deleted accounts may have a profile without an Auth user.
+    const { error: profileDeleteError } = await adminClient
+      .from('profiles')
+      .delete()
+      .eq('id', body.designerId);
+    if (profileDeleteError) {
+      console.error('Could not delete orphaned designer profile:', profileDeleteError);
+      return jsonResponse(500, { error: 'Uploaded images were removed, but the account record could not be deleted. Please retry.' });
+    }
   }
 
   return jsonResponse(200, { success: true });
