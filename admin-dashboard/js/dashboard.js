@@ -185,6 +185,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function bindDashboardControls() {
     document.getElementById('global-search')?.addEventListener('input', applyCurrentSearch);
+    document.getElementById('recalculate-shirt-colors')
+        ?.addEventListener('click', recalculateAllShirtColors);
     const sidebar = document.querySelector('.dashboard-sidebar');
     const sidebarToggle = document.getElementById('sidebar-collapse-toggle');
     const setSidebarCollapsed = (collapsed) => {
@@ -423,6 +425,171 @@ async function loadDesigns() {
         designer: allDesigners.find((designer) => designer.id === design.designer_id)
             || { brand_name: design.brands?.name || 'ClosetX Designer' },
     }));
+}
+
+async function loadAllDesignColorSources() {
+    const pageSize = 500;
+    const designs = [];
+    for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await closetxSupabase
+            .from('designs')
+            .select('id, title, front_image_url, back_image_url')
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true })
+            .range(offset, offset + pageSize - 1);
+        if (error) throw new Error(`Could not load designs for color matching: ${error.message}`);
+        designs.push(...(data || []));
+        if (!data || data.length < pageSize) return designs;
+    }
+}
+
+function artworkImageUrl(value) {
+    const source = safeImageSource(value);
+    if (!source) throw new Error('A design is missing a valid artwork URL.');
+    const url = new URL(source);
+    const projectUrl = new URL(closetxSupabase.supabaseUrl);
+    if (url.origin !== projectUrl.origin
+        || !url.pathname.startsWith('/storage/v1/object/public/design-images/')) {
+        throw new Error('A design artwork URL is outside the public design-images bucket.');
+    }
+    return url.href;
+}
+
+function loadArtworkPixels(url) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.crossOrigin = 'anonymous';
+        image.onload = () => {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = 64;
+                canvas.height = 64;
+                const context = canvas.getContext('2d', { willReadFrequently: true });
+                if (!context) throw new Error('Could not create an artwork color sampler.');
+                context.drawImage(image, 0, 0, canvas.width, canvas.height);
+                resolve(context.getImageData(0, 0, canvas.width, canvas.height).data);
+            } catch (error) {
+                reject(error);
+            }
+        };
+        image.onerror = () => reject(new Error('Could not load a design artwork image.'));
+        image.src = url;
+    });
+}
+
+function dominantArtworkColorFromPixels(images) {
+    const buckets = new Map();
+    for (const pixels of images) {
+        for (let index = 0; index + 3 < pixels.length; index += 4) {
+            if (pixels[index + 3] < 128) continue;
+            const red = pixels[index];
+            const green = pixels[index + 1];
+            const blue = pixels[index + 2];
+            const key = ((red >> 3) << 10) | ((green >> 3) << 5) | (blue >> 3);
+            let bucket = buckets.get(key);
+            if (!bucket) {
+                bucket = { red: 0, green: 0, blue: 0, count: 0 };
+                buckets.set(key, bucket);
+            }
+            bucket.red += red;
+            bucket.green += green;
+            bucket.blue += blue;
+            bucket.count++;
+        }
+    }
+
+    let dominant = null;
+    for (const bucket of buckets.values()) {
+        if (!dominant || bucket.count > dominant.count) dominant = bucket;
+    }
+    if (!dominant) throw new Error('The artwork has no visible pixels to sample.');
+    const channels = [dominant.red, dominant.green, dominant.blue]
+        .map((channel) => Math.round(channel / dominant.count)
+            .toString(16).padStart(2, '0'));
+    return `#${channels.join('')}`.toUpperCase();
+}
+
+async function matchDesignArtworkColor(design) {
+    const images = await Promise.all([
+        loadArtworkPixels(artworkImageUrl(design.front_image_url)),
+        loadArtworkPixels(artworkImageUrl(design.back_image_url)),
+    ]);
+    return {
+        id: design.id,
+        color: dominantArtworkColorFromPixels(images),
+    };
+}
+
+async function mapWithConcurrency(items, concurrency, callback) {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+    const workers = Array.from(
+        { length: Math.min(concurrency, items.length) },
+        async () => {
+            while (true) {
+                const index = nextIndex++;
+                if (index >= items.length) return;
+                results[index] = await callback(items[index], index);
+            }
+        },
+    );
+    await Promise.all(workers);
+    return results;
+}
+
+async function recalculateAllShirtColors() {
+    const button = document.getElementById('recalculate-shirt-colors');
+    const status = document.getElementById('shirt-color-status');
+    if (!button || !status || button.disabled) return;
+    button.disabled = true;
+    status.textContent = 'Loading designs…';
+
+    try {
+        const designs = await loadAllDesignColorSources();
+        if (!designs.length) {
+            status.textContent = 'No designs to update.';
+            return;
+        }
+        if (!window.confirm(
+            `Recalculate and replace the saved shirt color for all ${designs.length} designs? `
+            + 'This also replaces colors chosen manually.',
+        )) {
+            status.textContent = 'No colors were changed.';
+            return;
+        }
+
+        let completed = 0;
+        const updates = await mapWithConcurrency(designs, 3, async (design) => {
+            const update = await matchDesignArtworkColor(design);
+            completed++;
+            status.textContent = `Analyzing artwork: ${completed} of ${designs.length}…`;
+            return update;
+        });
+
+        const { data, error } = await closetxSupabase.rpc(
+            'admin_bulk_set_design_shirt_colors',
+            { p_updates: updates },
+        );
+        if (error) throw new Error(`Could not save the matched shirt colors: ${error.message}`);
+        const updatedCount = Number(data);
+        if (!Number.isInteger(updatedCount) || updatedCount !== designs.length) {
+            throw new Error(`The database updated ${data} of ${designs.length} designs.`);
+        }
+
+        status.textContent = `Updated ${updatedCount} designs. Refresh the mobile app to see the changes.`;
+        try {
+            await refreshData();
+        } catch (error) {
+            console.error('Shirt colors were updated, but the dashboard did not refresh:', error);
+            showDashboardError(`Shirt colors were updated, but the dashboard could not refresh: ${error.message}`);
+        }
+    } catch (error) {
+        console.error('Could not recalculate shirt colors:', error);
+        status.textContent = 'Color recalculation failed.';
+        showDashboardError(`Could not recalculate all shirt colors: ${error.message}`);
+    } finally {
+        button.disabled = false;
+    }
 }
 
 async function loadDesigners() {

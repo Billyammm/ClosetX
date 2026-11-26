@@ -73,7 +73,10 @@ class _TryOnScreenState extends State<TryOnScreen> {
             ),
           ),
           Expanded(
-            child: TryOnView(src: tryOnPageUrlFor(widget.garment, _mode)),
+            child: TryOnView(
+              src: tryOnPageUrlFor(widget.garment, _mode),
+              shirtColorHex: widget.garment.shirtColorHex,
+            ),
           ),
         ],
       ),

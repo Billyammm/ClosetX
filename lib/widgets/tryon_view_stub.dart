@@ -17,7 +17,7 @@ bool get isTryOnSupported => Platform.isAndroid;
 class TryOnView extends StatefulWidget {
   const TryOnView({
     required this.src,
-    this.shirtColorHex = '#F2F2F2',
+    this.shirtColorHex,
     this.frontAdjustment = const PrintFitAdjustment(),
     this.backAdjustment = const PrintFitAdjustment(),
     this.frontArtworkBytes,
@@ -28,7 +28,7 @@ class TryOnView extends StatefulWidget {
   });
 
   final String src;
-  final String shirtColorHex;
+  final String? shirtColorHex;
   final PrintFitAdjustment frontAdjustment;
   final PrintFitAdjustment backAdjustment;
   final Uint8List? frontArtworkBytes;
@@ -91,7 +91,7 @@ window.postMessage(${jsonEncode({
           'type': 'closetx:design',
           'front': source.queryParameters['front'],
           'back': source.queryParameters['back'],
-          'color': widget.shirtColorHex,
+          'color': widget.shirtColorHex ?? source.queryParameters['color'],
           'frontAdjustment': {'scale': widget.frontAdjustment.scale, 'offsetX': widget.frontAdjustment.offsetX, 'offsetY': widget.frontAdjustment.offsetY},
           'backAdjustment': {'scale': widget.backAdjustment.scale, 'offsetX': widget.backAdjustment.offsetX, 'offsetY': widget.backAdjustment.offsetY},
         })}, window.location.origin);

@@ -62,9 +62,10 @@ const MEDIAPIPE_VERSION = '1.0.1';
 const POSE_MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
-// Full front/back shirt bounds, including sleeves, in rest-pose metres.
-const FRONT_PRINT_BOX = { x0: -0.43, x1: 0.43, y0: 0.89, y1: 1.55 };
-const BACK_PRINT_BOX = { x0: -0.43, x1: 0.43, y0: 0.89, y1: 1.55 };
+// Print panels cover the torso only; the surrounding garment remains fabric.
+const FRONT_PRINT_BOX = { x0: -0.20, x1: 0.20, y0: 0.95, y1: 1.45 };
+const BACK_PRINT_BOX = { x0: -0.20, x1: 0.20, y0: 0.95, y1: 1.45 };
+const DEFAULT_UNMATCHED_COLOR = '#F2F2F2'; // Legacy database default for an unmatched design.
 
 const params = new URLSearchParams(location.search);
 const mode = params.get('mode') === 'camera' ? 'camera' : '3d';
@@ -79,6 +80,7 @@ window.addEventListener('error', (e) => setStatus('Error: ' + e.message));
 // ---------------------------------------------------------------------------
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: mode === 'camera' });
+renderer.setClearColor(0x000000, mode === 'camera' ? 0 : 1);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.getElementById('stage').appendChild(renderer.domElement);
@@ -206,7 +208,9 @@ uniform float uBufferHeight;
 vec4 closetxPrint(sampler2D tex, vec4 rect, float u) {
   float v = (vRestPos.y - rect.y) / (rect.w - rect.y);
   if (u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0) return vec4(0.0);
-  return texture2D(tex, vec2(u, v));
+  vec4 printColor = texture2D(tex, vec2(u, 1.0 - v));
+  if (printColor.a < 0.5) return vec4(0.0);
+  return printColor;
 }`)
     .replace('#include <map_fragment>', `#include <map_fragment>
 if (uUseMask > 0.5) {
@@ -217,7 +221,8 @@ if (uUseMask > 0.5) {
 }
 if (gl_FrontFacing) {
   vec4 printColor = vec4(0.0);
-  // Project each side across its half of the fabric, including the curved sleeves.
+  // The GLB has no separate print material, so alpha-composite the untinted print
+  // over the fabric material and leave the rest of the torso panel unchanged.
   if (uHasFront > 0.5 && vRestPos.z > -0.02) {
     printColor = closetxPrint(uFront, uFrontRect, (vRestPos.x - uFrontRect.x) / (uFrontRect.z - uFrontRect.x));
   } else if (uHasBack > 0.5 && vRestPos.z < 0.02) {
@@ -227,8 +232,7 @@ if (gl_FrontFacing) {
 }`);
 };
 
-// Map the full artwork canvas to the shirt bounds; adjustments scale around
-// the shirt centre so reset always fills from neckline to hem and sleeve edges.
+// Map the artwork canvas to a torso print panel; adjustments scale around its centre.
 function fitRect(box, adjustment = {}) {
   const bw = box.x1 - box.x0, bh = box.y1 - box.y0;
   const scale = Number.isFinite(adjustment.scale) ? adjustment.scale : 1;
@@ -299,7 +303,6 @@ function loadPrint(url, side, adjustment = adjustmentFromParams(side)) {
     applyPrintTexture(side, state, state.texture, adjustment);
     return Promise.resolve();
   }
-
   state.url = url;
   const generation = ++state.generation;
   state.loading = new Promise((resolve) => {
@@ -309,6 +312,7 @@ function loadPrint(url, side, adjustment = adjustmentFromParams(side)) {
         resolve();
         return;
       }
+      texture.flipY = false;
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
       texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
@@ -330,11 +334,115 @@ function loadPrint(url, side, adjustment = adjustmentFromParams(side)) {
   return state.loading;
 }
 
-function applyDesign({ front, back, color, frontAdjustment, backAdjustment }) {
-  if (color && /^#[0-9a-f]{6}$/i.test(color)) shirtMaterial.color.set(color);
+function loadArtworkPixels(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 64;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (!context) throw new Error('Could not create an artwork color sampler.');
+        context.drawImage(image, 0, 0, 64, 64);
+        resolve(context.getImageData(0, 0, 64, 64).data);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    image.onerror = () => reject(new Error('Could not load artwork for color sampling.'));
+    image.src = url;
+  });
+}
+
+function dominantArtworkColorFromPixels(images) {
+  const buckets = new Map();
+  for (const pixels of images) {
+    for (let index = 0; index + 3 < pixels.length; index += 4) {
+      if (pixels[index + 3] < 200) continue;
+      const red = pixels[index];
+      const green = pixels[index + 1];
+      const blue = pixels[index + 2];
+      const key = ((red >> 3) << 10) | ((green >> 3) << 5) | (blue >> 3);
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = { red: 0, green: 0, blue: 0, count: 0 };
+        buckets.set(key, bucket);
+      }
+      bucket.red += red;
+      bucket.green += green;
+      bucket.blue += blue;
+      bucket.count++;
+    }
+  }
+
+  let dominant = null;
+  for (const bucket of buckets.values()) {
+    if (!dominant || bucket.count > dominant.count) dominant = bucket;
+  }
+  if (!dominant) throw new Error('The artwork has no pixels with alpha of at least 200.');
+  return `#${[dominant.red, dominant.green, dominant.blue]
+    .map((channel) => Math.round(channel / dominant.count).toString(16).padStart(2, '0'))
+    .join('')}`.toUpperCase();
+}
+
+const artworkColorSamples = new Map();
+function sampleArtworkColor(design) {
+  const urls = [design.front, design.back].filter(Boolean);
+  if (!urls.length) return Promise.reject(new Error('No artwork is available to sample.'));
+  const key = urls.join('\u0000');
+  if (!artworkColorSamples.has(key)) {
+    artworkColorSamples.set(key, Promise.all(urls.map(loadArtworkPixels))
+      .then(dominantArtworkColorFromPixels));
+  }
+  return artworkColorSamples.get(key);
+}
+
+function isValidShirtColor(color) {
+  return typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color);
+}
+
+async function applyDesignColors(model, design, generation) {
+  let color = design.color;
+  if (!isValidShirtColor(color) || color.toUpperCase() === DEFAULT_UNMATCHED_COLOR) {
+    try {
+      color = await sampleArtworkColor(design);
+    } catch (error) {
+      if (generation !== designColorGeneration) return;
+      console.error('Could not sample the design color; using black fabric.', error);
+      setStatus('Could not sample artwork color; using black fabric.');
+      color = '#000000';
+    }
+  }
+  if (generation !== designColorGeneration) return;
+
+  shirtMaterial.map = null;
+  shirtMaterial.color.set(color);
+  shirtMaterial.needsUpdate = true;
+  model?.traverse((object) => {
+    if (!object.isMesh || object.name === 'Body_Occluder') return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of materials) {
+      if (!material || material.userData?.closetxPrintMaterial) continue;
+      material.map = null;
+      material.color?.set(color);
+      material.needsUpdate = true;
+    }
+  });
+}
+
+let currentDesign = {};
+let designColorGeneration = 0;
+let shirtModel = null;
+function applyDesign(design) {
+  currentDesign = { ...currentDesign, ...design };
+  const generation = ++designColorGeneration;
   return Promise.all([
-    loadPrint(front, 'front', frontAdjustment ?? adjustmentFromParams('front')),
-    loadPrint(back, 'back', backAdjustment ?? adjustmentFromParams('back')),
+    applyDesignColors(shirtModel, currentDesign, generation),
+    loadPrint(currentDesign.front, 'front',
+      currentDesign.frontAdjustment ?? adjustmentFromParams('front')),
+    loadPrint(currentDesign.back, 'back',
+      currentDesign.backAdjustment ?? adjustmentFromParams('back')),
   ]);
 }
 
@@ -371,16 +479,26 @@ const designReady = applyDesign({
 
 // GLTFLoader strips "." from node names ("UpperArm.L" -> "UpperArmL").
 const boneKey = (name) => name.replace(/\./g, '');
+let loggedMeshMaterials = false;
 
 new GLTFLoader().load(new URL('shirt.glb', import.meta.url).href, async (gltf) => {
   const model = gltf.scene;
   const meshes = [];
   model.traverse((o) => { if (o.isMesh) meshes.push(o); });
+  if (!loggedMeshMaterials) {
+    loggedMeshMaterials = true;
+    console.log('[ClosetX shirt GLTF] meshes/materials:', JSON.stringify(meshes.map((mesh) => ({
+      mesh: mesh.name,
+      materials: (Array.isArray(mesh.material) ? mesh.material : [mesh.material])
+        .map((material) => material?.name || '(unnamed)'),
+    }))));
+  }
   const occluder = meshes.find((m) => m.name === 'Body_Occluder');
   const shirt = meshes.find((m) => m.name.startsWith('Shirt')) ?? meshes.find((m) => m !== occluder);
 
   // Keep the wrinkle (normal) and ambient-occlusion maps baked in Blender.
   const baked = shirt.material;
+  shirtMaterial.map = null;
   shirtMaterial.normalMap = baked.normalMap ?? null;
   if (baked.normalScale) shirtMaterial.normalScale.copy(baked.normalScale);
   shirtMaterial.aoMap = baked.aoMap ?? null;
@@ -403,6 +521,7 @@ new GLTFLoader().load(new URL('shirt.glb', import.meta.url).href, async (gltf) =
   }
 
   shirtRoot.add(model);
+  shirtModel = model;
   shirtRoot.updateMatrixWorld(true);
 
   // Rest pose of every bone, plus the axis each limb bone should aim along.
@@ -437,6 +556,7 @@ new GLTFLoader().load(new URL('shirt.glb', import.meta.url).href, async (gltf) =
   rig.ready = true;
 
   await designReady;
+  await applyDesignColors(model, currentDesign, designColorGeneration);
   if (mode === 'camera') {
     shirtRoot.visible = false;
     startCamera();

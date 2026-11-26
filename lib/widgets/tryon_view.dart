@@ -9,7 +9,7 @@ enum TryOnMode { viewer3d, camera }
 
 String tryOnDesignMessage({
   required Uri source,
-  required String shirtColorHex,
+  String? shirtColorHex,
   required PrintFitAdjustment frontAdjustment,
   required PrintFitAdjustment backAdjustment,
 }) {
@@ -18,7 +18,7 @@ window.postMessage(${jsonEncode({
     'type': 'closetx:design',
     'front': source.queryParameters['front'],
     'back': source.queryParameters['back'],
-    'color': shirtColorHex,
+    'color': shirtColorHex ?? source.queryParameters['color'],
     'frontAdjustment': {'scale': frontAdjustment.scale, 'offsetX': frontAdjustment.offsetX, 'offsetY': frontAdjustment.offsetY},
     'backAdjustment': {'scale': backAdjustment.scale, 'offsetX': backAdjustment.offsetX, 'offsetY': backAdjustment.offsetY},
   })}, window.location.origin);

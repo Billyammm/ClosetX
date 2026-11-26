@@ -13,7 +13,7 @@ const isTryOnSupported = true;
 class TryOnView extends StatefulWidget {
   const TryOnView({
     required this.src,
-    this.shirtColorHex = '#F2F2F2',
+    this.shirtColorHex,
     this.frontAdjustment = const PrintFitAdjustment(),
     this.backAdjustment = const PrintFitAdjustment(),
     this.frontArtworkBytes,
@@ -24,7 +24,7 @@ class TryOnView extends StatefulWidget {
   });
 
   final String src;
-  final String shirtColorHex;
+  final String? shirtColorHex;
   final PrintFitAdjustment frontAdjustment;
   final PrintFitAdjustment backAdjustment;
   final Uint8List? frontArtworkBytes;
@@ -60,7 +60,9 @@ class _TryOnViewState extends State<TryOnView> {
       'type': 'closetx:design',
       'front': Uri.parse(widget.src).queryParameters['front'],
       'back': Uri.parse(widget.src).queryParameters['back'],
-      'color': widget.shirtColorHex,
+      'color':
+          widget.shirtColorHex ??
+          Uri.parse(widget.src).queryParameters['color'],
       'frontAdjustment': {
         'scale': widget.frontAdjustment.scale,
         'offsetX': widget.frontAdjustment.offsetX,

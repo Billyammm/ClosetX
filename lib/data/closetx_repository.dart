@@ -217,7 +217,7 @@ class ClosetXRepository {
         ? _optionalString(brand['logo_url'])
         : null;
     final frontImageUrl = _requiredString(row, 'front_image_url');
-    final shirtColorHex = _optionalString(row['shirt_color']) ?? '#F2F2F2';
+    final shirtColorHex = _optionalString(row['shirt_color']);
 
     return Garment(
       id: 'supabase:${row['id']}',
@@ -239,7 +239,7 @@ class ClosetXRepository {
         offsetX: _doubleValue(row['back_print_offset_x'], fallback: 0),
         offsetY: _doubleValue(row['back_print_offset_y'], fallback: 0),
       ),
-      color: _colorFromHex(shirtColorHex),
+      color: _colorFromHex(shirtColorHex ?? '#F2F2F2'),
       shirtColorHex: shirtColorHex,
       impact: 'Ready for 3D try-on',
       description:

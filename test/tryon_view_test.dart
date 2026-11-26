@@ -37,6 +37,18 @@ void main() {
     expect(uri.queryParameters['back'], 'https://example.com/back.png');
   });
 
+  test('missing saved shirt color is left for the viewer artwork sampler', () {
+    final uri = Uri.parse(
+      tryOnPageUrl(
+        mode: TryOnMode.viewer3d,
+        frontImageUrl: 'https://example.com/front.png',
+        backImageUrl: 'https://example.com/back.png',
+      ),
+    );
+
+    expect(uri.queryParameters.containsKey('color'), isFalse);
+  });
+
   test('upload preview can hold the front view for fit adjustments', () {
     final uri = Uri.parse(
       tryOnPageUrl(mode: TryOnMode.viewer3d, autoRotate: false),
@@ -105,4 +117,24 @@ void main() {
     expect(script, contains('"offsetY":-0.1'));
     expect(script, contains('window.location.origin'));
   });
+
+  test(
+    'live preview keeps a saved URL color when no widget color is supplied',
+    () {
+      final source = Uri.parse(
+        tryOnPageUrl(
+          mode: TryOnMode.camera,
+          frontImageUrl: 'https://example.com/front.png',
+          shirtColorHex: '#123ABC',
+        ),
+      );
+      final script = tryOnDesignMessage(
+        source: source,
+        frontAdjustment: const PrintFitAdjustment(),
+        backAdjustment: const PrintFitAdjustment(),
+      );
+
+      expect(script, contains('"color":"#123ABC"'));
+    },
+  );
 }
