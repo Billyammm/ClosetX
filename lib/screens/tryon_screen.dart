@@ -76,6 +76,8 @@ class _TryOnScreenState extends State<TryOnScreen> {
             child: TryOnView(
               src: tryOnPageUrlFor(widget.garment, _mode),
               shirtColorHex: widget.garment.shirtColorHex,
+              frontAdjustment: widget.garment.frontPrintAdjustment,
+              backAdjustment: widget.garment.backPrintAdjustment,
             ),
           ),
         ],

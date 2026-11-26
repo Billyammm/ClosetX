@@ -1,4 +1,5 @@
 import 'package:closetx/models/garment.dart';
+import 'package:closetx/screens/tryon_screen.dart';
 import 'package:closetx/widgets/tryon_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -90,6 +91,41 @@ void main() {
     expect(uri.queryParameters['backScale'], '0.8');
     expect(uri.queryParameters['backOffsetX'], '-0.1');
     expect(uri.queryParameters['backOffsetY'], '0.15');
+  });
+
+  testWidgets('try-on screen forwards saved artwork placement to the viewer', (
+    tester,
+  ) async {
+    const adjustedGarment = Garment(
+      id: 'supabase:adjusted-screen-design-id',
+      name: 'Adjusted shirt',
+      designer: 'ClosetX Designer',
+      price: 500,
+      category: 'T-Shirts',
+      imageUrl: 'https://example.com/thumbnail.png',
+      frontImageUrl: 'https://example.com/front.png',
+      backImageUrl: 'https://example.com/back.png',
+      color: Colors.white,
+      impact: 'Ready for 3D try-on',
+      description: 'A designer shirt.',
+      frontPrintAdjustment: PrintFitAdjustment(
+        scale: 1.4,
+        offsetX: 0.1,
+        offsetY: -0.2,
+      ),
+      backPrintAdjustment: PrintFitAdjustment(
+        scale: 0.8,
+        offsetX: -0.1,
+        offsetY: 0.15,
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: TryOnScreen(garment: adjustedGarment)),
+    );
+
+    final viewer = tester.widget<TryOnView>(find.byType(TryOnView));
+    expect(viewer.frontAdjustment, adjustedGarment.frontPrintAdjustment);
+    expect(viewer.backAdjustment, adjustedGarment.backPrintAdjustment);
   });
 
   test('live preview update serializes fit and shirt colour changes', () {
