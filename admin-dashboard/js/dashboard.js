@@ -987,7 +987,15 @@ async function reviewDesign(id, status) {
 async function removeDesign(id, button) {
     const design = allDesigns.find((item) => item.id === id);
     if (!design) return;
-    if (!window.confirm(`Permanently remove "${design.title}"? Its uploaded images will also be deleted. This cannot be undone.`)) return;
+    const confirmed = await confirmDashboardAction({
+        title: 'Remove this design?',
+        description: 'This will permanently remove the design and delete its uploaded images from ClosetX.',
+        itemName: design.title || 'Untitled design',
+        itemDetail: `${design.designer?.brand_name || 'ClosetX Designer'} · ${design.category || 'T-Shirts'}`,
+        imageUrl: design.thumbnail_url || design.front_image_url,
+        actionLabel: 'Remove design',
+    });
+    if (!confirmed) return;
 
     button.disabled = true;
     button.textContent = 'Removing...';
@@ -1036,9 +1044,14 @@ async function removeDesigner(id, button) {
     if (!designer) return;
 
     const name = designer.full_name || designer.email || 'this designer';
-    if (!window.confirm(
-        `Permanently remove ${name} (${designer.email})? Their brand, designs, and uploaded images will also be deleted. This cannot be undone.`,
-    )) return;
+    const confirmed = await confirmDashboardAction({
+        title: 'Remove this designer?',
+        description: 'This will permanently remove the designer, their brand, designs, and uploaded images from ClosetX.',
+        itemName: name,
+        itemDetail: designer.email,
+        actionLabel: 'Remove designer',
+    });
+    if (!confirmed) return;
 
     button.disabled = true;
     button.textContent = 'Removing...';
@@ -1371,6 +1384,34 @@ function renderDesignReviews() {
 
 function closeModal(id) {
     document.getElementById(id)?.classList.add('hidden');
+}
+
+function confirmDashboardAction({ title, description, itemName, itemDetail, imageUrl, actionLabel }) {
+    const dialog = document.getElementById('confirmationModal');
+    const image = document.getElementById('confirmation-image');
+    const imageSource = safeImageSource(imageUrl);
+    document.getElementById('confirmation-title').textContent = title;
+    document.getElementById('confirmation-description').textContent = description;
+    document.getElementById('confirmation-item-name').textContent = itemName;
+
+    const detail = document.getElementById('confirmation-item-detail');
+    detail.textContent = itemDetail || '';
+    detail.classList.toggle('hidden', !itemDetail);
+
+    image.classList.toggle('hidden', !imageSource);
+    document.getElementById('confirmation-image-placeholder').classList.toggle('hidden', Boolean(imageSource));
+    if (imageSource) image.src = imageSource;
+    else image.removeAttribute('src');
+
+    dialog.querySelector('[data-confirm-accept]').textContent = actionLabel;
+
+    return new Promise((resolve) => {
+        dialog.returnValue = 'cancel';
+        dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true });
+        dialog.querySelector('[data-confirm-cancel]').onclick = () => dialog.close('cancel');
+        dialog.querySelector('[data-confirm-accept]').onclick = () => dialog.close('confirm');
+        dialog.showModal();
+    });
 }
 
 async function refreshData() {

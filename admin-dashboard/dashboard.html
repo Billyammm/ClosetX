@@ -294,6 +294,30 @@
         <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"></div>
     </div>
 
+    <dialog id="confirmationModal" class="confirmation-modal" aria-labelledby="confirmation-title" aria-describedby="confirmation-description">
+        <div class="confirmation-content">
+            <div class="confirmation-icon" aria-hidden="true"><i class="fas fa-triangle-exclamation"></i></div>
+            <p class="confirmation-eyebrow">Permanent action</p>
+            <h2 id="confirmation-title" class="confirmation-title"></h2>
+            <p id="confirmation-description" class="confirmation-description"></p>
+            <div class="confirmation-item">
+                <div class="confirmation-item-image">
+                    <img id="confirmation-image" class="hidden" alt="">
+                    <i id="confirmation-image-placeholder" class="fas fa-shirt" aria-hidden="true"></i>
+                </div>
+                <div class="confirmation-item-copy">
+                    <strong id="confirmation-item-name"></strong>
+                    <span id="confirmation-item-detail" class="hidden"></span>
+                </div>
+            </div>
+            <p class="confirmation-warning"><i class="fas fa-circle-exclamation" aria-hidden="true"></i> This action cannot be undone.</p>
+            <div class="confirmation-actions">
+                <button type="button" class="confirmation-cancel" data-confirm-cancel>Cancel</button>
+                <button type="button" class="confirmation-accept" data-confirm-accept>Remove</button>
+            </div>
+        </div>
+    </dialog>
+
     <script src="js/config.js"></script>
     <script src="js/dashboard.js"></script>
     <script src="js/charts.js"></script>
